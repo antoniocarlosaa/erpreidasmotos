@@ -15,6 +15,8 @@ import {
   addVehicleCost,
   deleteVehicleCost,
   updateVehiclePublication,
+  getCatalogSettings,
+  saveCatalogSettings,
 } from "@/actions/vehicleActions";
 import { createContract } from "@/actions/contractActions";
 import { Vehicle, VehicleCategory, VehicleStatus, VehicleCost } from "@/types";
@@ -265,12 +267,27 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   // Local sale price input in Custos tab
   const [localSalePrice, setLocalSalePrice] = useState<string>("");
 
-  // Load publication configs from local storage on mount
+  // Load publication configs from Firestore on mount to share between devices (with local fallback)
   useEffect(() => {
     const url = localStorage.getItem("catalog_url");
     const token = localStorage.getItem("catalog_token");
     if (url) setGlobalCatalogUrl(url);
     if (token) setGlobalCatalogToken(token);
+
+    getCatalogSettings()
+      .then((settings) => {
+        if (settings) {
+          if (settings.catalog_url) {
+            setGlobalCatalogUrl(settings.catalog_url);
+            localStorage.setItem("catalog_url", settings.catalog_url);
+          }
+          if (settings.catalog_token) {
+            setGlobalCatalogToken(settings.catalog_token);
+            localStorage.setItem("catalog_token", settings.catalog_token);
+          }
+        }
+      })
+      .catch((err) => console.error("Erro ao carregar chaves do catálogo global:", err));
   }, []);
 
   // Debounce search input
@@ -1055,10 +1072,16 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     setGlobalCatalogUrl(sanitizedUrl);
     localStorage.setItem("catalog_url", sanitizedUrl);
     localStorage.setItem("catalog_token", globalCatalogToken);
-    setTimeout(() => {
-      setSavingCatalogSettings(false);
-      alert("Configurações de integração salvas com sucesso no navegador! A URL foi corrigida e formatada automaticamente.");
-    }, 500);
+
+    saveCatalogSettings(sanitizedUrl, globalCatalogToken)
+      .then(() => {
+        setSavingCatalogSettings(false);
+        alert("Configurações de integração salvas com sucesso na nuvem e no navegador! Todos os seus dispositivos conectados verão as credenciais sincronizadas.");
+      })
+      .catch((err: any) => {
+        setSavingCatalogSettings(false);
+        alert("Configurações salvas localmente, mas ocorreu um erro ao salvar na nuvem: " + err.message);
+      });
   };
 
   // Handle publishing toggle per vehicle

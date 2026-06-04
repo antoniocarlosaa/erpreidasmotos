@@ -279,3 +279,32 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
   return { success: false };
 }
 
+export async function getCatalogSettings() {
+  const user = await getCurrentUser();
+  if (!user || !user.company_id) {
+    throw new Error("Não autorizado.");
+  }
+  const doc = await db.collection("companies").doc(user.company_id).get();
+  if (doc.exists) {
+    const data = doc.data();
+    return {
+      catalog_url: data?.catalog_url || "",
+      catalog_token: data?.catalog_token || "",
+    };
+  }
+  return { catalog_url: "", catalog_token: "" };
+}
+
+export async function saveCatalogSettings(url: string, token: string) {
+  const user = await getCurrentUser();
+  if (!user || !user.company_id) {
+    throw new Error("Não autorizado.");
+  }
+  await db.collection("companies").doc(user.company_id).update({
+    catalog_url: url,
+    catalog_token: token,
+    updated_at: new Date().toISOString(),
+  });
+  return { success: true };
+}
+
