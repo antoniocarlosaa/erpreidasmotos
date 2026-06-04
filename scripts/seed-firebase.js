@@ -7,6 +7,12 @@ const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
 if (privateKey) {
+  // Remove aspas extras que possam ter sido copiadas/coladas
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.slice(1, -1);
+  } else if (privateKey.startsWith("'") && privateKey.endsWith("'")) {
+    privateKey = privateKey.slice(1, -1);
+  }
   privateKey = privateKey.replace(/\\n/g, "\n");
 }
 

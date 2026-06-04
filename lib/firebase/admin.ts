@@ -7,6 +7,12 @@ if (!admin.apps.length) {
     let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
     if (privateKey) {
+      // Remove aspas extras que possam ter sido copiadas/coladas (especialmente no Vercel)
+      if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+        privateKey = privateKey.slice(1, -1);
+      } else if (privateKey.startsWith("'") && privateKey.endsWith("'")) {
+        privateKey = privateKey.slice(1, -1);
+      }
       // Corrige quebras de linha que possam vir formatadas incorretamente no .env
       privateKey = privateKey.replace(/\\n/g, "\n");
     }
