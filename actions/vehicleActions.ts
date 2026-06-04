@@ -211,7 +211,7 @@ export async function updateVehiclePublication(vehicleId: string, publishData: {
       let sanitizedUrl = publishData.catalog_url.trim().toLowerCase().replace(/\/+$/, "");
 
       // Correção automática se o usuário informou o link do site (/vehicles) em vez da rota de API (/api/vehicles)
-      if (sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") && !sanitizedUrl.includes("/api/")) {
+      if (sanitizedUrl.includes("catalogolojareidasmotos.vercel.app") && !sanitizedUrl.includes("/api/")) {
         if (sanitizedUrl.endsWith("/vehicles")) {
           sanitizedUrl = sanitizedUrl.replace("/vehicles", "/api/vehicles");
         } else {

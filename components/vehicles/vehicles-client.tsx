@@ -249,7 +249,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const [addingCost, setAddingCost] = useState(false);
 
   // External catalog integration state
-  const [globalCatalogUrl, setGlobalCatalogUrl] = useState("https://api.meucatalogo.com.br/v1/vehicles");
+  const [globalCatalogUrl, setGlobalCatalogUrl] = useState("https://catalogolojareidasmotos.vercel.app/api/vehicles");
   const [globalCatalogToken, setGlobalCatalogToken] = useState("");
   const [savingCatalogSettings, setSavingCatalogSettings] = useState(false);
 
