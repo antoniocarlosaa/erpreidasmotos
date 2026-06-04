@@ -516,20 +516,66 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = (file: File, maxWidth = 1024, maxHeight = 1024, quality = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(event.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedBase64 = canvas.toDataURL("image/jpeg", quality);
+          resolve(compressedBase64);
+        };
+        img.onerror = () => {
+          resolve(event.target?.result as string); // Fallback to original
+        };
+      };
+      reader.onerror = () => {
+        resolve(""); // Fallback empty
+      };
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        const updatedPhotos = [...formPhotos, base64String];
-        setFormPhotos(updatedPhotos);
-        setValue("photos", updatedPhotos);
-      };
-      reader.readAsDataURL(file);
-    });
+    const fileList = Array.from(files);
+    for (const file of fileList) {
+      const base64String = await compressImage(file);
+      if (base64String) {
+        setFormPhotos((prev) => {
+          const updated = [...prev, base64String];
+          setValue("photos", updated);
+          return updated;
+        });
+      }
+    }
   };
 
   const removePhoto = (index: number) => {
@@ -547,20 +593,21 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     }
   };
 
-  const handleFileUploadReady = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUploadReady = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        const updatedPhotos = [...formPhotosReady, base64String];
-        setFormPhotosReady(updatedPhotos);
-        setValue("photos_ready", updatedPhotos);
-      };
-      reader.readAsDataURL(file);
-    });
+    const fileList = Array.from(files);
+    for (const file of fileList) {
+      const base64String = await compressImage(file);
+      if (base64String) {
+        setFormPhotosReady((prev) => {
+          const updated = [...prev, base64String];
+          setValue("photos_ready", updated);
+          return updated;
+        });
+      }
+    }
   };
 
   const removePhotoReady = (index: number) => {
@@ -581,6 +628,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setFormPhotosReady([]);
       alert("Veículo cadastrado com sucesso!");
     },
+    onError: (error: any) => {
+      console.error("Erro ao cadastrar veículo:", error);
+      alert(`Falha ao cadastrar veículo: ${error.message || "Erro desconhecido. Verifique se as fotos não são muito grandes."}`);
+    }
   });
 
   const updateMutation = useMutation({
@@ -595,6 +646,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setFormPhotosReady([]);
       alert("Cadastro de veículo atualizado com sucesso!");
     },
+    onError: (error: any) => {
+      console.error("Erro ao atualizar veículo:", error);
+      alert(`Falha ao atualizar veículo: ${error.message || "Erro desconhecido. Verifique se as fotos não estão corrompidas ou são muito grandes."}`);
+    }
   });
 
   const deleteMutation = useMutation({
@@ -606,6 +661,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setSelectedVehicle(null);
       alert("Veículo excluído do estoque!");
     },
+    onError: (error: any) => {
+      console.error("Erro ao excluir veículo:", error);
+      alert(`Erro ao excluir veículo: ${error.message || "Erro desconhecido"}`);
+    }
   });
 
   const onSubmit = async (values: VehicleFormValues) => {
@@ -962,10 +1021,36 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   // Helper calculations for days in stock
   const calculateDaysInStock = (entryDate?: string, saleDate?: string) => {
     if (!entryDate) return 0;
-    const start = new Date(entryDate);
-    const end = saleDate ? new Date(saleDate) : new Date("2026-06-01"); // Using current system date from prompt
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    const parseDateToMidnight = (dateStr: string) => {
+      const dateOnly = dateStr.split("T")[0];
+      const parts = dateOnly.split("-");
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        return new Date(year, month, day);
+      }
+      const parsed = new Date(dateStr);
+      return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+    };
+
+    try {
+      const start = parseDateToMidnight(entryDate);
+      let end: Date;
+      if (saleDate) {
+        end = parseDateToMidnight(saleDate);
+      } else {
+        const today = new Date();
+        end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      }
+      const diffTime = end.getTime() - start.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return Math.max(0, diffDays);
+    } catch (e) {
+      console.error("Erro ao calcular dias em estoque:", e);
+      return 0;
+    }
   };
 
   // Find currently selected vehicle in Costs tab
@@ -1061,7 +1146,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     let sanitizedUrl = globalCatalogUrl.trim().toLowerCase().replace(/\/+$/, "");
 
     // Correção automática se o usuário informou o link do site (/vehicles) em vez da rota de API (/api/vehicles)
-    if (sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") && !sanitizedUrl.includes("/api/")) {
+    if ((sanitizedUrl.includes("catalogoexclusivemotos.vercel.app") || sanitizedUrl.includes("catalogolojareidasmotos.vercel.app")) && !sanitizedUrl.includes("/api/")) {
       if (sanitizedUrl.endsWith("/vehicles")) {
         sanitizedUrl = sanitizedUrl.replace("/vehicles", "/api/vehicles");
       } else {
