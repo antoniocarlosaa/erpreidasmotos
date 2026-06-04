@@ -331,7 +331,7 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
                     <Label htmlFor="company-name">Nome da Loja / Razão Social *</Label>
                     <Input
                       id="company-name"
-                      placeholder="Ex: AutoPrime Multimarcas Ltda"
+                      placeholder="Ex: Rei das Motos Ltda"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       className="bg-black/30 h-10"
@@ -387,7 +387,7 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
                     <Input
                       id="company-email"
                       type="email"
-                      placeholder="Ex: contato@autoprime.com.br"
+                      placeholder="Ex: contato@reidasmotos.com.br"
                       value={companyEmail}
                       onChange={(e) => setCompanyEmail(e.target.value)}
                       className="bg-black/30 h-10 pl-9"

@@ -35,7 +35,7 @@ async function seed() {
   // 1. Criar Empresa
   console.log("Criando empresa...");
   await db.collection("companies").doc(companyId).set({
-    name: 'AutoPrime Multimarcas Ltda',
+    name: 'Rei das Motos',
     document: '12.345.678/0001-90',
     created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
     updated_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
@@ -46,25 +46,25 @@ async function seed() {
     {
       uid: '00000000-0000-0000-0000-000000000001',
       name: 'Carlos Henrique (Admin)',
-      email: 'admin@autoprime.com.br',
+      email: 'admin@reidasmotos.com.br',
       role: 'admin'
     },
     {
       uid: '00000000-0000-0000-0000-000000000002',
       name: 'Lucas Mendes (Vendas)',
-      email: 'vendedor@autoprime.com.br',
+      email: 'vendedor@reidasmotos.com.br',
       role: 'vendedor'
     },
     {
       uid: '00000000-0000-0000-0000-000000000003',
       name: 'Mariana Costa (Operacional)',
-      email: 'operacional@autoprime.com.br',
+      email: 'operacional@reidasmotos.com.br',
       role: 'operacional'
     },
     {
       uid: '00000000-0000-0000-0000-000000000004',
       name: 'Ricardo Souza (Financeiro)',
-      email: 'financeiro@autoprime.com.br',
+      email: 'financeiro@reidasmotos.com.br',
       role: 'financeiro'
     }
   ];
@@ -293,7 +293,7 @@ async function seed() {
       down_payment: 20000.00,
       installments_count: 24,
       interest_rate: 1.49,
-      warranty_text: 'Garantia contratual estendida AutoPrime de 180 dias para motor, câmbio e sistema de ar-condicionado.',
+      warranty_text: 'Garantia contratual estendida Rei das Motos de 180 dias para motor, câmbio e sistema de ar-condicionado.',
       notes: 'Entrada em dinheiro e saldo parcelado via boleto da loja.',
       status: 'EM_PROCESSO_DE_TRANSFERENCIA',
       version: 1,

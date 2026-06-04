@@ -28,25 +28,25 @@ export default function LoginPage() {
     {
       role: "admin",
       label: "Administrador",
-      email: "admin@autoprime.com.br",
+      email: "admin@reidasmotos.com.br",
       desc: "Acesso total aos relatórios, logs e configurações.",
     },
     {
       role: "vendedor",
       label: "Vendedor",
-      email: "vendedor@autoprime.com.br",
+      email: "vendedor@reidasmotos.com.br",
       desc: "Gestão de veículos, clientes e contratos.",
     },
     {
       role: "operacional",
       label: "Operações",
-      email: "operacional@autoprime.com.br",
+      email: "operacional@reidasmotos.com.br",
       desc: "Acompanhamento de despachante e vistorias.",
     },
     {
       role: "financeiro",
       label: "Financeiro",
-      email: "financeiro@autoprime.com.br",
+      email: "financeiro@reidasmotos.com.br",
       desc: "Reconciliação e fluxo de parcelas.",
     },
   ];
@@ -167,7 +167,7 @@ export default function LoginPage() {
                       <Input
                         id="login-email"
                         type="email"
-                        placeholder="nome@empresa.com.br"
+                        placeholder="nome@reidasmotos.com.br"
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
                         className="pl-9 bg-black/40"
@@ -271,7 +271,7 @@ export default function LoginPage() {
                       <Input
                         id="reg-email"
                         type="email"
-                        placeholder="nome@empresa.com.br"
+                        placeholder="nome@reidasmotos.com.br"
                         value={registerEmail}
                         onChange={(e) => setRegisterEmail(e.target.value)}
                         className="pl-9 bg-black/40"
