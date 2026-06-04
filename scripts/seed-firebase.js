@@ -7,12 +7,13 @@ const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
 if (privateKey) {
-  // Remove aspas extras que possam ter sido copiadas/coladas
-  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-    privateKey = privateKey.slice(1, -1);
-  } else if (privateKey.startsWith("'") && privateKey.endsWith("'")) {
-    privateKey = privateKey.slice(1, -1);
-  }
+  // Limpa espaços em branco e quebras de linha das pontas
+  privateKey = privateKey.trim();
+  // Remove aspas simples ou duplas das pontas de forma segura
+  privateKey = privateKey.replace(/^["']|["']$/g, '');
+  // Limpa novamente para o caso de espaços dentro das aspas
+  privateKey = privateKey.trim();
+  // Corrige quebras de linha literais "\n"
   privateKey = privateKey.replace(/\\n/g, "\n");
 }
 
