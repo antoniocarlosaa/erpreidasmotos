@@ -1598,32 +1598,61 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         </div>
 
                         {/* Composição Financeira */}
-                        <div className="grid grid-cols-2 gap-2 text-[11px] pt-3 mt-3 border-t border-dashed border-border/20">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground uppercase font-semibold">Compra (Aval.)</span>
-                            <span className="font-bold text-foreground">{formatCurrency(appraisal)}</span>
-                          </div>
-                          <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground uppercase font-semibold">Custos e Despesas</span>
-                            <span className="font-bold text-red-400">{formatCurrency(expensesTotal)}</span>
-                          </div>
-                          <div className="flex flex-col col-span-2 border-t border-border/10 pt-1.5">
-                            <div className="flex justify-between items-center text-[10px] mb-1 font-semibold text-cyan-400">
-                              <span>Total Investido:</span>
-                              <span>{formatCurrency(totalInvested)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-[11px] font-bold text-primary mb-1">
-                              <span>Valor de Venda:</span>
-                              <span className="text-xs">{formatCurrency(salePrice)}</span>
-                            </div>
-                            <div className="flex justify-between items-center pt-1 border-t border-zinc-900 text-[10px]">
-                              <span className="text-muted-foreground font-semibold">Lucro Estimado:</span>
-                              <span className={`font-black ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                {formatCurrency(profit)} ({margin.toFixed(0)}%)
+                        {vehicle.status === "vendido" ? (
+                          <div className="grid grid-cols-2 gap-2 text-[11px] pt-3 mt-3 border-t border-dashed border-border/20 bg-blue-950/10 p-2 rounded">
+                            <div className="flex flex-col col-span-2">
+                              <span className="text-[9px] text-blue-400 uppercase font-semibold">Data da Venda</span>
+                              <span className="font-bold text-foreground">
+                                {detail?.sale_date ? new Date(detail.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : detail?.stock_metrics?.sale_date ? new Date(detail.stock_metrics.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "-"}
                               </span>
                             </div>
+                            <div className="flex flex-col col-span-2">
+                              <span className="text-[9px] text-blue-400 uppercase font-semibold">Quem Vendeu / Recebeu</span>
+                              <span className="font-semibold text-foreground">{detail?.sold_by_name || "-"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-blue-400 uppercase font-semibold">Forma da Venda</span>
+                              <span className="font-semibold text-foreground capitalize">{detail?.payment_method || "-"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-blue-400 uppercase font-semibold">Modalidade</span>
+                              <span className="font-semibold text-foreground capitalize">{detail?.sale_modality || "-"}</span>
+                            </div>
+                            <div className="flex flex-col col-span-2 border-t border-border/10 pt-1.5 font-bold text-emerald-400">
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span>Valor Venda:</span>
+                                <span className="text-xs">{formatCurrency(salePrice)}</span>
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2 text-[11px] pt-3 mt-3 border-t border-dashed border-border/20">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-muted-foreground uppercase font-semibold">Compra (Aval.)</span>
+                              <span className="font-bold text-foreground">{formatCurrency(appraisal)}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-muted-foreground uppercase font-semibold">Custos e Despesas</span>
+                              <span className="font-bold text-red-400">{formatCurrency(expensesTotal)}</span>
+                            </div>
+                            <div className="flex flex-col col-span-2 border-t border-border/10 pt-1.5">
+                              <div className="flex justify-between items-center text-[10px] mb-1 font-semibold text-cyan-400">
+                                <span>Total Investido:</span>
+                                <span>{formatCurrency(totalInvested)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px] font-bold text-primary mb-1">
+                                <span>Valor de Venda:</span>
+                                <span className="text-xs">{formatCurrency(salePrice)}</span>
+                              </div>
+                              <div className="flex justify-between items-center pt-1 border-t border-zinc-900 text-[10px]">
+                                <span className="text-muted-foreground font-semibold">Lucro Estimado:</span>
+                                <span className={`font-black ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                  {formatCurrency(profit)} ({margin.toFixed(0)}%)
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center justify-end border-t border-border/20 pt-3">
@@ -1672,11 +1701,23 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                     <TableRow className="hover:bg-transparent border-border/40">
                       <TableHead className="font-semibold">Modelo</TableHead>
                       <TableHead className="font-semibold">Placa</TableHead>
-                      <TableHead className="font-semibold">Compra (Aval.)</TableHead>
-                      <TableHead className="font-semibold">Custos e Despesas</TableHead>
-                      <TableHead className="font-semibold">Total Investido</TableHead>
-                      <TableHead className="font-semibold">Preço Venda</TableHead>
-                      <TableHead className="font-semibold">Margem / Lucro</TableHead>
+                      {statusFilter === "vendido" ? (
+                        <>
+                          <TableHead className="font-semibold">Data Venda</TableHead>
+                          <TableHead className="font-semibold">Quem Vendeu/Recebeu</TableHead>
+                          <TableHead className="font-semibold">Forma da Venda</TableHead>
+                          <TableHead className="font-semibold">Modalidade</TableHead>
+                          <TableHead className="font-semibold">Valor Venda</TableHead>
+                        </>
+                      ) : (
+                        <>
+                          <TableHead className="font-semibold">Compra (Aval.)</TableHead>
+                          <TableHead className="font-semibold">Custos e Despesas</TableHead>
+                          <TableHead className="font-semibold">Total Investido</TableHead>
+                          <TableHead className="font-semibold">Preço Venda</TableHead>
+                          <TableHead className="font-semibold">Margem / Lucro</TableHead>
+                        </>
+                      )}
                       <TableHead className="font-semibold">Tempo Estoque</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold text-right">Ações</TableHead>
@@ -1720,13 +1761,35 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                           </TableCell>
                           <TableCell className="font-mono text-muted-foreground">{vehicle.plate}</TableCell>
                           
-                          <TableCell className="font-semibold text-foreground">{formatCurrency(appraisal)}</TableCell>
-                          <TableCell className="font-semibold text-red-400">{formatCurrency(expensesTotal)}</TableCell>
-                          <TableCell className="font-semibold text-cyan-400">{formatCurrency(totalInvested)}</TableCell>
-                          <TableCell className="font-semibold text-primary">{formatCurrency(salePrice)}</TableCell>
-                          <TableCell className={`font-bold ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                            {margin.toFixed(0)}% ({formatCurrency(profit)})
-                          </TableCell>
+                          {statusFilter === "vendido" ? (
+                            <>
+                              <TableCell className="text-foreground">
+                                {detail?.sale_date ? new Date(detail.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : detail?.stock_metrics?.sale_date ? new Date(detail.stock_metrics.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "-"}
+                              </TableCell>
+                              <TableCell className="text-foreground font-semibold">
+                                {detail?.sold_by_name || "-"}
+                              </TableCell>
+                              <TableCell className="text-foreground capitalize">
+                                {detail?.payment_method || "-"}
+                              </TableCell>
+                              <TableCell className="text-foreground capitalize">
+                                {detail?.sale_modality || "-"}
+                              </TableCell>
+                              <TableCell className="font-bold text-emerald-400">
+                                {formatCurrency(salePrice)}
+                              </TableCell>
+                            </>
+                          ) : (
+                            <>
+                              <TableCell className="font-semibold text-foreground">{formatCurrency(appraisal)}</TableCell>
+                              <TableCell className="font-semibold text-red-400">{formatCurrency(expensesTotal)}</TableCell>
+                              <TableCell className="font-semibold text-cyan-400">{formatCurrency(totalInvested)}</TableCell>
+                              <TableCell className="font-semibold text-primary">{formatCurrency(salePrice)}</TableCell>
+                              <TableCell className={`font-bold ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                {margin.toFixed(0)}% ({formatCurrency(profit)})
+                              </TableCell>
+                            </>
+                          )}
 
                           <TableCell>
                             {vehicle.status === "vendido" ? (
@@ -3970,6 +4033,35 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   </div>
                 );
               })()}
+
+              {/* Informações de Venda */}
+              {selectedVehicle.status === "vendido" && (
+                <div className="bg-blue-950/15 p-4 rounded-lg border border-blue-500/20 space-y-2 text-xs">
+                  <h4 className="font-bold text-blue-400 uppercase pb-1 border-b border-blue-500/10 flex items-center gap-1.5">
+                    <Coins size={14} /> Detalhes da Venda
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-muted-foreground font-semibold">Data da Venda</p>
+                      <p className="font-bold text-foreground">
+                        {selectedVehicle.sale_date ? new Date(selectedVehicle.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : selectedVehicle.stock_metrics?.sale_date ? new Date(selectedVehicle.stock_metrics.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground font-semibold">Quem Vendeu / Recebeu</p>
+                      <p className="font-bold text-foreground">{selectedVehicle.sold_by_name || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground font-semibold">Forma da Venda</p>
+                      <p className="font-bold text-foreground capitalize">{selectedVehicle.payment_method || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground font-semibold">Modalidade</p>
+                      <p className="font-bold text-foreground capitalize">{selectedVehicle.sale_modality || "-"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* State and Observations */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">

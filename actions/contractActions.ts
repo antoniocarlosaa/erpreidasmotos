@@ -95,6 +95,7 @@ export async function createContract(contractData: any) {
       negotiation_agreement: contractData.negotiation_agreement || "",
       company_id: user.company_id,
       seller_id: user.id,
+      seller_name: user.name,
       // Novos campos de Compra de Veículo
       appraised_value: contractData.appraised_value ? Number(contractData.appraised_value) : undefined,
       detran_debt: contractData.detran_debt ? Number(contractData.detran_debt) : undefined,

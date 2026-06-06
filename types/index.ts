@@ -64,6 +64,11 @@ export interface Vehicle {
   status: VehicleStatus;
   created_at: string;
   updated_at: string;
+  // Informações de Venda
+  sale_date?: string;
+  sold_by_name?: string;
+  payment_method?: string;
+  sale_modality?: string;
   // Novos campos adicionados para o Módulo Avançado
   version?: string;
   owner_name?: string;
@@ -187,6 +192,7 @@ export interface Contract {
   client_id: string;
   vehicle_id: string;
   seller_id: string | null;
+  seller_name?: string;
   total_value: number;
   down_payment: number;
   installments_count: number;

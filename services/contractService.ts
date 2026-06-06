@@ -102,9 +102,13 @@ export const contractService = {
 
     if (!createdContract) throw new Error("Falha ao cadastrar o contrato.");
 
-    // 3. Dar baixa no veículo (status vendido)
+    // 3. Dar baixa no veículo (status vendido) e salvar dados da venda
     await vehicleRepository.update(supabase, contractData.vehicle_id, {
       status: "vendido",
+      sale_date: new Date().toISOString().split("T")[0],
+      sold_by_name: (contractData as any).seller_name || "Vendedor",
+      payment_method: contractData.payment_method || "Não informado",
+      sale_modality: contractData.modality || "Não informada",
     });
 
     // 4. Gerar Parcelas no Módulo Financeiro
