@@ -383,6 +383,45 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
   const parseAndFillCRLVText = (text: string) => {
     const textUpper = text.toUpperCase();
+
+    const cleanOwnerName = (rawName: string): string => {
+      let name = rawName.toUpperCase().replace(/\s+/g, " ").trim();
+      
+      const prefixesToRemove = [
+        /^P\b/,
+        /^N[AÃ]O APLIC[AÁ]VEL\b/,
+        /^NAO APLICAVEL\b/,
+        /^APLIC[AÁ]VEL\b/,
+        /^CABINE\b/,
+        /^DUPLA\b/,
+        /^ABERTA\b/,
+        /^FECHADA\b/,
+        /^PASSAGEIRO\b/,
+        /^MOTOCICLO\b/,
+        /^MOTOCICLETA\b/,
+        /^MOTOCICL\b/,
+        /^ESPECIAL\b/,
+        /^CAMINHONETE\b/,
+        /^CAMIONETA\b/,
+        /^AUTOMOVEL\b/,
+        /^CIONETA\b/,
+      ];
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        name = name.trim();
+        for (const prefix of prefixesToRemove) {
+          const newName = name.replace(prefix, "").trim();
+          if (newName !== name) {
+            name = newName;
+            changed = true;
+          }
+        }
+      }
+
+      return name;
+    };
     
     // 1. Placa
     const plateRegex = /PLACA\s*:?\s*([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})/i;
@@ -400,46 +439,116 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       renavam = textUpper.match(genericRenavamRegex)?.[1] || "";
     }
 
-    // 3. Chassi
-    const chassisRegex = /CHASSI\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i;
-    let chassis = textUpper.match(chassisRegex)?.[1] || "";
-    if (!chassis) {
-      const genericChassisRegex = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
-      chassis = textUpper.match(genericChassisRegex)?.[1] || "";
+    // 3. Chassi e Cor Predominante
+    const chassisColorFuelRegex = /\b([A-HJ-NPR-Z0-9]{17})\s+([A-Z]{3,})\s+([A-Z\/]+)\s+(PARTICULAR|OFICIAL|CONVENIO|ALUGUEL|APRENDIZAGEM|REPRESENTACAO|DIPLOMATICO|COLECIONADOR)\b/i;
+    const ccMatch = textUpper.match(chassisColorFuelRegex);
+    
+    let chassis = "";
+    let color = "";
+    if (ccMatch) {
+      chassis = ccMatch[1];
+      color = ccMatch[2].trim().toLowerCase();
+    } else {
+      const chassisRegex = /CHASSI\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i;
+      chassis = textUpper.match(chassisRegex)?.[1] || "";
+      if (!chassis) {
+        const genericChassisRegex = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
+        chassis = textUpper.match(genericChassisRegex)?.[1] || "";
+      }
+      
+      const colorRegex = /COR\s*(?:PREDOMINANTE)?\s*:?\s*([A-Z]{3,})(?=\s{2,}|\n|$)/i;
+      color = textUpper.match(colorRegex)?.[1]?.trim().toLowerCase() || "";
     }
 
     // 4. Marca/Modelo
-    const modelRegex = /MARCA\s*[\/\-]?\s*MODELO\s*:?\s*([A-Z0-9\s\-\/]+?)(?=\s{2,}|[A-Z]+:|\n|$)/i;
-    let brandModel = textUpper.match(modelRegex)?.[1]?.trim() || "";
+    const brandModelRegex = /(?:\*{3}|VIA:?\s*\*{3})\s+([A-Z0-9\s\-\/\.]+?)\s+(PASSAGEIRO MOTOCICLETA|PASSAGEIRO MOTOCICLO|PASSAGEIRO MOTONETA|CAMINHONETE|CAMIONETA|AUTOM[OÓ]VEL|PASSAGEIRO AUTOM[OÓ]VEL|CAMINH[AÃ]O|UTILIT[AÁ]RIO|CARGA|PASSAGEIRO|MISTO)\s+([A-Z0-9*]{7}\/[A-Z*]{2})/i;
+    const bmMatch = textUpper.match(brandModelRegex);
+    
     let brand = "";
     let model = "";
-    if (brandModel) {
-      if (brandModel.includes("/")) {
-        const parts = brandModel.split("/");
-        brand = parts[0].trim();
-        model = parts.slice(1).join("/").trim();
+    if (bmMatch) {
+      const brandModelRaw = bmMatch[1].trim();
+      const cleanBrandModel = brandModelRaw.replace(/\s+/g, " ").trim();
+      if (cleanBrandModel.includes("/")) {
+        const parts = cleanBrandModel.split("/");
+        const firstPart = parts[0].trim();
+        
+        if (firstPart === "I" && parts.length > 1) {
+          const secondPart = parts.slice(1).join("/").trim();
+          const spaceIndex = secondPart.indexOf(" ");
+          if (spaceIndex !== -1) {
+            brand = "I/" + secondPart.substring(0, spaceIndex).trim();
+            model = secondPart.substring(spaceIndex).trim();
+          } else {
+            brand = "I/" + secondPart;
+            model = secondPart;
+          }
+        } else {
+          brand = firstPart;
+          model = parts.slice(1).join("/").trim();
+        }
       } else {
-        const parts = brandModel.split(/\s+/);
-        brand = parts[0].trim();
-        model = parts.slice(1).join(" ").trim();
+        const spaceIndex = cleanBrandModel.indexOf(" ");
+        if (spaceIndex !== -1) {
+          brand = cleanBrandModel.substring(0, spaceIndex).trim();
+          model = cleanBrandModel.substring(spaceIndex).trim();
+        } else {
+          brand = cleanBrandModel;
+          model = cleanBrandModel;
+        }
+      }
+    } else {
+      const modelRegex = /MARCA\s*[\/\-]?\s*MODELO\s*:?\s*([A-Z0-9\s\-\/]+?)(?=\s{2,}|[A-Z]+:|\n|$)/i;
+      let brandModel = textUpper.match(modelRegex)?.[1]?.trim() || "";
+      if (brandModel) {
+        if (brandModel.includes("/")) {
+          const parts = brandModel.split("/");
+          brand = parts[0].trim();
+          model = parts.slice(1).join("/").trim();
+        } else {
+          const parts = brandModel.split(/\s+/);
+          brand = parts[0].trim();
+          model = parts.slice(1).join(" ").trim();
+        }
       }
     }
 
     // 5. Ano Modelo
-    const yearRegex = /ANO\s+MOD(?:ELO)?\s*:?\s*(\d{4})/i;
-    let yearStr = textUpper.match(yearRegex)?.[1] || "";
-    if (!yearStr) {
-      const yearFabrModRegex = /(\d{4})\s*\/\s*(\d{4})/;
-      const match = textUpper.match(yearFabrModRegex);
-      if (match) {
-        yearStr = match[2];
+    const yearsRegex = /([A-Z0-9]{7})\s+(\d{4})\s+(\d{4})\s+(\d{4})/i;
+    const yearsMatch = textUpper.match(yearsRegex);
+    let year = new Date().getFullYear();
+    if (yearsMatch) {
+      year = parseInt(yearsMatch[4]);
+    } else {
+      const yearRegex = /ANO\s+MOD(?:ELO)?\s*:?\s*(\d{4})/i;
+      let yearStr = textUpper.match(yearRegex)?.[1] || "";
+      if (!yearStr) {
+        const yearFabrModRegex = /(\d{4})\s*\/\s*(\d{4})/;
+        const match = textUpper.match(yearFabrModRegex);
+        if (match) {
+          yearStr = match[2];
+        }
+      }
+      if (yearStr) year = parseInt(yearStr);
+    }
+
+    // 6. Proprietário e CPF
+    const cpfCnpjRegex = /\b(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\b/;
+    const cpfMatch = textUpper.match(cpfCnpjRegex);
+    let ownerCpf = "";
+    let ownerName = "";
+    
+    if (cpfMatch) {
+      ownerCpf = cpfMatch[1].replace(/\D/g, "");
+      const cpfIndex = textUpper.indexOf(cpfMatch[1]);
+      if (cpfIndex !== -1) {
+        const beforeCpf = textUpper.substring(0, cpfIndex).trim();
+        const nameMatch = beforeCpf.match(/([A-ZÃÕÁÉÍÓÚÇ\s]+)$/i);
+        if (nameMatch) {
+          ownerName = cleanOwnerName(nameMatch[1]);
+        }
       }
     }
-    const year = yearStr ? parseInt(yearStr) : new Date().getFullYear();
-
-    // 6. Cor Predominante
-    const colorRegex = /COR\s*(?:PREDOMINANTE)?\s*:?\s*([A-Z]{3,})(?=\s{2,}|\n|$)/i;
-    const color = textUpper.match(colorRegex)?.[1]?.trim().toLowerCase() || "";
 
     // Preencher campos no formulário
     if (plate) setValue("plate", plate.replace("-", "").toUpperCase());
@@ -449,16 +558,38 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     if (model) setValue("model", model);
     if (year) setValue("year", year);
     if (color) setValue("color", color);
+    if (ownerName) setValue("owner_name", ownerName);
+    if (ownerCpf) setValue("owner_cpf", ownerCpf);
+    
+    setValue("items_delivered.crlv", true);
 
     // Auto-detect category
-    if (textUpper.includes("MOTO") || textUpper.includes("MOTOCICLO") || textUpper.includes("MOTOCICLETA") || textUpper.includes("HONDA/") || textUpper.includes("YAMAHA/")) {
+    const isMoto = textUpper.includes("MOTOCICLO") || 
+                   textUpper.includes("MOTOCICLETA") || 
+                   textUpper.includes("MOTONETA") || 
+                   textUpper.includes("CICLOMOTOR") ||
+                   textUpper.includes("HONDA/") || 
+                   textUpper.includes("YAMAHA/") ||
+                   /\b(MOTO|MOTOCICLETA|MOTOCICLO|MOTONETA)\b/.test(textUpper);
+
+    const isCarro = textUpper.includes("AUTOMOVEL") || 
+                    textUpper.includes("AUTOMÓVEL") || 
+                    textUpper.includes("CAMINHONETE") || 
+                    textUpper.includes("CAMIONETA") || 
+                    textUpper.includes("UTILITARIO") || 
+                    textUpper.includes("UTILITÁRIO") ||
+                    /\b(CARRO|AUTOMOVEL|AUTOMÓVEL|CAMIONETA|CAMINHONETE)\b/.test(textUpper);
+
+    if (isMoto) {
       setValue("category", "moto");
+    } else if (isCarro) {
+      setValue("category", "carro");
     } else {
       setValue("category", "carro");
     }
 
     setIsReadingCRLV(false);
-    alert(`CRLV Lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}`);
+    alert(`CRLV Lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}\n- Proprietário: ${ownerName || "Não encontrado"}\n- CPF: ${ownerCpf || "Não encontrado"}`);
   };
 
   const parseAndFillCRLVUrl = (urlText: string) => {
