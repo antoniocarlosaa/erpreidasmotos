@@ -102,6 +102,37 @@ export const contractService = {
 
     if (!createdContract) throw new Error("Falha ao cadastrar o contrato.");
 
+    // Se for Compra e Venda (Troca), cadastra o veículo de troca de volta no estoque
+    if (contractData.modality === "compra_venda" && (contractData as any).trade_brand_model) {
+      const brandStr = (contractData as any).trade_brand_model.split(" ")[0] || "Marca";
+      const modelStr = (contractData as any).trade_brand_model.split(" ").slice(1).join(" ") || (contractData as any).trade_brand_model;
+      
+      const clientDoc = await supabase.collection("clients").doc(contractData.client_id).get().catch(() => null);
+      const clientData = clientDoc && clientDoc.exists ? clientDoc.data() : null;
+
+      await vehicleRepository.create(supabase, {
+        company_id: contractData.company_id,
+        brand: brandStr,
+        model: modelStr,
+        year: Number((contractData as any).trade_year) || new Date().getFullYear(),
+        color: (contractData as any).trade_color || "Não informada",
+        plate: (contractData as any).trade_plate || "SEM-PLACA",
+        renavam: (contractData as any).trade_renavam || "",
+        chassis: (contractData as any).trade_chassis || "",
+        mileage: Number((contractData as any).trade_mileage) || 0,
+        value: Number((contractData as any).trade_value) || 0,
+        category: (contractData as any).trade_category || "moto",
+        status: "disponivel",
+        entry_modality: "compra",
+        photos: [],
+        photos_ready: [],
+        owner_name: clientData?.name || "",
+        owner_cpf: clientData?.cpf || "",
+        owner_phone: clientData?.phone || clientData?.whatsapp || "",
+        notes: `Veículo recebido na troca no contrato nº ${createdContract.contract_number}.`,
+      });
+    }
+
     // 3. Dar baixa no veículo (status vendido) e salvar dados da venda
     await vehicleRepository.update(supabase, contractData.vehicle_id, {
       status: "vendido",
@@ -113,40 +144,138 @@ export const contractService = {
 
     // 4. Gerar Parcelas no Módulo Financeiro
     const paymentsToCreate: Omit<Payment, "id" | "created_at">[] = [];
-    const financedAmount = contractData.total_value - contractData.down_payment;
 
-    // Parcela de Entrada (se houver)
-    if (contractData.down_payment > 0) {
-      paymentsToCreate.push({
-        contract_id: createdContract.id,
-        amount: contractData.down_payment,
-        due_date: new Date().toISOString().split("T")[0], // Vence hoje
-        status: "PENDENTE",
-        installment_number: 0, // 0 = Entrada
-      });
-    }
+    if (contractData.modality === "compra_venda") {
+      const tradeVal = (contractData as any).trade_value || 0;
+      const cashVal = (contractData as any).trade_cash || 0;
+      const pixVal = (contractData as any).trade_pix || 0;
+      const cardVal = (contractData as any).trade_card || 0;
+      const financedVal = (contractData as any).trade_financed || 0;
 
-    // Parcelas de Financiamento
-    if (contractData.installments_count > 0 && financedAmount > 0) {
-      const pmtAmount = this.calculatePMT(
-        financedAmount,
-        contractData.interest_rate,
-        contractData.installments_count
-      );
-
-      const today = new Date();
-      for (let i = 1; i <= contractData.installments_count; i++) {
-        // Vencimentos mensais subsequentes
-        const dueDate = new Date(today);
-        dueDate.setMonth(today.getMonth() + i);
-
+      // 1. Registro da Entrada (Veículo de Troca)
+      if (tradeVal > 0) {
         paymentsToCreate.push({
           contract_id: createdContract.id,
-          amount: pmtAmount,
-          due_date: dueDate.toISOString().split("T")[0],
-          status: "PENDENTE",
-          installment_number: i,
+          amount: tradeVal,
+          due_date: new Date().toISOString().split("T")[0],
+          status: "PAGO", // Veículo de troca entra como pago
+          payment_method: "pix",
+          installment_number: 0, // 0 = Entrada
         });
+      }
+
+      // 2. Registro de pagamentos feitos no ato
+      if (cashVal > 0) {
+        paymentsToCreate.push({
+          contract_id: createdContract.id,
+          amount: cashVal,
+          due_date: new Date().toISOString().split("T")[0],
+          status: "PAGO",
+          payment_method: "dinheiro",
+          installment_number: 101, // Identificador de pagamento no ato
+        });
+      }
+      if (pixVal > 0) {
+        paymentsToCreate.push({
+          contract_id: createdContract.id,
+          amount: pixVal,
+          due_date: new Date().toISOString().split("T")[0],
+          status: "PAGO",
+          payment_method: "pix",
+          installment_number: 102,
+        });
+      }
+      if (cardVal > 0) {
+        paymentsToCreate.push({
+          contract_id: createdContract.id,
+          amount: cardVal,
+          due_date: new Date().toISOString().split("T")[0],
+          status: "PAGO",
+          payment_method: "cartao_credito",
+          installment_number: 103,
+        });
+      }
+      if (financedVal > 0) {
+        paymentsToCreate.push({
+          contract_id: createdContract.id,
+          amount: financedVal,
+          due_date: new Date().toISOString().split("T")[0],
+          status: "PENDENTE",
+          payment_method: "transferencia_bancaria",
+          installment_number: 104,
+        });
+      }
+
+      // 3. Parcelas do Saldo Restante (se houver)
+      const remainingVal = (contractData as any).remaining_balance || 0;
+      if (remainingVal > 0) {
+        const installments = (contractData as any).remaining_installments || 1;
+        const installmentAmount = Number((remainingVal / installments).toFixed(2));
+        const method = (contractData as any).remaining_method || "pix";
+
+        let payMethod: PaymentMethod = "pix";
+        if (method === "especie") payMethod = "dinheiro";
+        else if (method === "cartao_parcelado") payMethod = "cartao_credito";
+        else if (method === "cheque") payMethod = "transferencia_bancaria";
+        else if (method === "boleto") payMethod = "boleto";
+
+        const today = new Date();
+        const limitDateStr = (contractData as any).remaining_due_date;
+        const limitDate = limitDateStr ? new Date(limitDateStr) : null;
+
+        for (let i = 1; i <= installments; i++) {
+          let dueDate = new Date(today);
+          dueDate.setMonth(today.getMonth() + i);
+          if (limitDate && dueDate > limitDate && i === installments) {
+            dueDate = limitDate;
+          }
+
+          paymentsToCreate.push({
+            contract_id: createdContract.id,
+            amount: installmentAmount,
+            due_date: dueDate.toISOString().split("T")[0],
+            status: "PENDENTE",
+            payment_method: payMethod,
+            installment_number: i,
+          });
+        }
+      }
+    } else {
+      const financedAmount = contractData.total_value - contractData.down_payment;
+
+      // Parcela de Entrada (se houver)
+      if (contractData.down_payment > 0) {
+        paymentsToCreate.push({
+          contract_id: createdContract.id,
+          amount: contractData.down_payment,
+          due_date: new Date().toISOString().split("T")[0], // Vence hoje
+          status: "PENDENTE",
+          installment_number: 0, // 0 = Entrada
+        });
+      }
+
+      // Parcelas de Financiamento
+      if (contractData.installments_count > 0 && financedAmount > 0) {
+        const pmtAmount = this.calculatePMT(
+          financedAmount,
+          contractData.interest_rate,
+          contractData.installments_count
+        );
+
+        const today = new Date();
+        for (let i = 1; i <= contractData.installments_count; i++) {
+          // Vencimentos mensais subsequentes
+          const dueDate = new Date(today);
+          dueDate.setMonth(today.getMonth() + i);
+
+          paymentsToCreate.push({
+            contract_id: createdContract.id,
+            amount: pmtAmount,
+            due_date: dueDate.toISOString().split("T")[0],
+            status: "PENDENTE",
+            installment_number: i,
+          });
+        }
       }
     }
 

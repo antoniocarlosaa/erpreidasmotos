@@ -140,9 +140,74 @@ function getContractTextStructure(contract: Contract, signaturesList: Signature[
       `- Saldo Financiado: R$ ${formattedFinanced} parcelado em ${contract.installments_count} parcelas mensais e sucessivas de R$ ${formattedPmt} cada.`
     );
   } else if (contract.modality === "compra_venda") {
+    const tradeValue = (contract as any).trade_value || 0;
+    const formattedTradeVal = formatCurrency(tradeValue);
+    const remaining = (contract as any).remaining_balance || 0;
+    const formattedRemaining = formatCurrency(remaining);
+    
     paragraphs.push(
-      `O valor total do negócio é de R$ ${formattedTotal}. A transação envolve a entrega de um veículo como parte do pagamento (troca).`
+      `O valor total do veículo objeto da venda é de R$ ${formattedTotal}. A transação envolve a entrega de um veículo como parte do pagamento (troca) pelo COMPRADOR, e o acerto de eventuais diferenças conforme detalhado.`,
+      `Dados do Veículo Recebido na Troca pela loja (Entrada):`,
+      `- Veículo/Modelo: ${(contract as any).trade_brand_model || "Não informado"}`,
+      `- Placa: ${(contract as any).trade_plate || "Não informada"}${ (contract as any).trade_year ? `, Ano: ${(contract as any).trade_year}` : "" }${ (contract as any).trade_color ? `, Cor: ${(contract as any).trade_color}` : "" }`,
+      `- Valor de Avaliação: R$ ${formattedTradeVal}`
     );
+
+    const details: string[] = [];
+    if ((contract as any).trade_cash > 0) details.push(`R$ ${formatCurrency((contract as any).trade_cash)} em Espécie`);
+    if ((contract as any).trade_pix > 0) details.push(`R$ ${formatCurrency((contract as any).trade_pix)} no PIX`);
+    if ((contract as any).trade_card > 0) details.push(`R$ ${formatCurrency((contract as any).trade_card)} no Cartão`);
+    if ((contract as any).trade_financed > 0) {
+      details.push(`R$ ${formatCurrency((contract as any).trade_financed)} financiado pelo ${(contract as any).trade_bank || "Banco"}`);
+    }
+
+    if (details.length > 0) {
+      paragraphs.push(`Diferença complementar paga no ato: ${details.join(", ")}.`);
+    }
+
+    if (remaining > 0) {
+      const remainingInstallments = (contract as any).remaining_installments || 1;
+      const remainingMethod = (contract as any).remaining_method || "pix";
+      const remainingNotes = (contract as any).remaining_notes || "";
+      const methodLabel = remainingMethod === "pix" ? "PIX" :
+                          remainingMethod === "especie" ? "Espécie (Dinheiro)" :
+                          remainingMethod === "cartao_parcelado" ? "Cartão Parcelado" :
+                          remainingMethod === "promissoria" ? "Promissória" :
+                          remainingMethod === "cheque" ? "Cheque" :
+                          remainingMethod === "boleto" ? "Boleto" : remainingMethod;
+      
+      let remainingText = `- Saldo devedor restante a quitar: R$ ${formattedRemaining} em ${remainingInstallments}x no ${methodLabel}`;
+      if ((contract as any).remaining_due_date) {
+        const formattedDate = new Date((contract as any).remaining_due_date).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+        remainingText += ` com vencimento limite para ${formattedDate}`;
+      }
+      remainingText += ".";
+      if (remainingNotes) {
+        remainingText += ` Observações: ${remainingNotes}.`;
+      }
+      paragraphs.push(remainingText);
+    } else if (tradeValue > (contract.total_value + ((contract as any).card_surcharge || 0))) {
+      const refundVal = (contract as any).refund_value || 0;
+      const refundMethod = (contract as any).refund_method || "pix";
+      const refundPixKey = (contract as any).refund_pix_key || "";
+      const refundNotes = (contract as any).refund_notes || "";
+      const refundMethodLabel = refundMethod === "pix" ? "PIX" :
+                                refundMethod === "especie" ? "Espécie" : "Transferência Bancária";
+      
+      let refundText = `- Como o valor de avaliação do veículo recebido na troca superou o valor da venda, a loja pagará a volta (troco) de R$ ${formatCurrency(refundVal)} ao cliente via ${refundMethodLabel}`;
+      if ((contract as any).refund_due_date) {
+        const formattedDate = new Date((contract as any).refund_due_date).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+        refundText += ` com vencimento limite para ${formattedDate}`;
+      }
+      if (refundPixKey) {
+        refundText += ` (Chave/Dados: ${refundPixKey})`;
+      }
+      refundText += ".";
+      if (refundNotes) {
+        refundText += ` Observações: ${refundNotes}.`;
+      }
+      paragraphs.push(refundText);
+    }
   } else if (contract.modality === "repasse") {
     paragraphs.push(
       `O veículo é vendido no estado em que se encontra pelo preço de repasse de R$ ${formattedTotal}, com desconto especial em razão da ausência de garantias mecânicas ou estéticas de pátio.`

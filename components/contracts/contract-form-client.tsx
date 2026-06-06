@@ -110,6 +110,12 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
   const [tradeCash, setTradeCash] = useState(0);
   const [tradePix, setTradePix] = useState(0);
   const [tradeCard, setTradeCard] = useState(0);
+  const [tradeYear, setTradeYear] = useState<number>(new Date().getFullYear());
+  const [tradeColor, setTradeColor] = useState("");
+  const [tradeRenavam, setTradeRenavam] = useState("");
+  const [tradeChassis, setTradeChassis] = useState("");
+  const [tradeMileage, setTradeMileage] = useState<number>(0);
+  const [tradeCategory, setTradeCategory] = useState<"carro" | "moto">("moto");
 
   // Acréscimo e Saldo Devedor Detalhado
   const [cardSurcharge, setCardSurcharge] = useState(0);
@@ -562,6 +568,31 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
           agreement += " Restante totalmente quitado conforme detalhado.";
         }
         payload.negotiation_agreement = agreement;
+        
+        // Mapeamento de dados estruturados da troca e complementos
+        payload.trade_brand_model = tradeBrandModel;
+        payload.trade_plate = tradePlate;
+        payload.trade_value = tradeValue;
+        payload.trade_year = Number(tradeYear) || new Date().getFullYear();
+        payload.trade_color = tradeColor || "Não informada";
+        payload.trade_renavam = tradeRenavam;
+        payload.trade_chassis = tradeChassis;
+        payload.trade_mileage = Number(tradeMileage) || 0;
+        payload.trade_category = tradeCategory;
+        payload.trade_cash = tradeCash;
+        payload.trade_pix = tradePix;
+        payload.trade_card = tradeCard;
+        payload.trade_financed = tradeFinanced;
+        payload.trade_bank = tradeBank === "Outro" ? tradeCustomBank : tradeBank;
+        payload.card_surcharge = cardSurcharge;
+        payload.remaining_balance = remaining;
+        
+        if (remaining > 0) {
+          payload.remaining_installments = remainingInstallments;
+          if (remainingDueDate) payload.remaining_due_date = remainingDueDate;
+          payload.remaining_method = remainingMethod;
+          payload.remaining_notes = remainingNotes;
+        }
       }
 
       if (clientRegType === "new") {
@@ -648,6 +679,33 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
         if (consignationOwnerValue >= totalValue) {
           alert("O valor mínimo do proprietário deve ser menor que o valor estimado de venda.");
           return;
+        }
+      } else if (modality === "compra_venda") {
+        if (totalValue <= 0) {
+          alert("Insira o valor acordado de venda.");
+          return;
+        }
+        if (!tradeBrandModel || !tradeBrandModel.trim()) {
+          alert("Por favor, preencha a Marca/Modelo do veículo recebido na troca.");
+          return;
+        }
+        if (!tradePlate || !tradePlate.trim()) {
+          alert("Por favor, preencha a Placa do veículo recebido na troca.");
+          return;
+        }
+        if (tradeValue <= 0) {
+          alert("Por favor, informe o Valor de Avaliação do veículo recebido na troca.");
+          return;
+        }
+
+        const totalWithSurcharge = Number(totalValue) + Number(cardSurcharge);
+        const paidComplement = Number(tradeValue) + Number(tradeCash) + Number(tradePix) + Number(tradeCard) + Number(tradeFinanced);
+        const remaining = totalWithSurcharge - paidComplement;
+        if (remaining > 0) {
+          if (!remainingDueDate) {
+            alert("Como há saldo devedor restante, preencha a Data Limite para conclusão do saldo devedor.");
+            return;
+          }
         }
       } else {
         if (totalValue <= 0) {
@@ -1292,6 +1350,421 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                       <span className="font-mono text-primary font-extrabold text-lg">{formatCurrency(estimatedConsignationCommission)}</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            ) : modality === "compra_venda" ? (
+              <div className="space-y-6">
+                <div className="flex flex-col space-y-1 border-b border-border/20 pb-3">
+                  <h3 className="font-bold text-sm uppercase tracking-wider text-primary">Detalhamento da Compra e Venda (Troca)</h3>
+                  <span className="text-[11px] text-muted-foreground">Preencha o valor de venda, os dados do veículo de troca e a forma de acerto da diferença.</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                    <Label htmlFor="total_value" className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Valor de Venda do Veículo (R$) *</Label>
+                    <Input
+                      id="total_value"
+                      type="number"
+                      step="0.01"
+                      {...register("total_value")}
+                      className="bg-black/30 text-lg font-bold text-foreground h-11"
+                    />
+                    {errors.total_value && <p className="text-xs text-destructive">{errors.total_value.message}</p>}
+                  </div>
+                </div>
+
+                {/* Seção 1: Veículo Recebido na Troca */}
+                <div className="p-4 bg-zinc-950/40 rounded-lg border border-border/40 space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    🚗 Veículo Recebido na Troca (Entrada)
+                  </h4>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
+                      <Label>Categoria *</Label>
+                      <Select
+                        value={tradeCategory}
+                        onValueChange={(val: "carro" | "moto") => setTradeCategory(val)}
+                      >
+                        <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-10 text-xs">
+                          <SelectValue placeholder="Categoria" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-950 border border-border/40 text-foreground text-xs">
+                          <SelectItem value="moto">Motocicleta</SelectItem>
+                          <SelectItem value="carro">Automóvel (Carro)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs col-span-2 sm:col-span-2">
+                      <Label htmlFor="trade_brand_model">Marca / Modelo *</Label>
+                      <Input
+                        id="trade_brand_model"
+                        type="text"
+                        placeholder="Ex: HONDA/CG 160 FAN"
+                        value={tradeBrandModel}
+                        onChange={(e) => setTradeBrandModel(e.target.value)}
+                        className="bg-black/30 h-10 text-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="trade_plate">Placa *</Label>
+                      <Input
+                        id="trade_plate"
+                        type="text"
+                        placeholder="Ex: QQQ-1234"
+                        value={tradePlate}
+                        onChange={(e) => setTradePlate(e.target.value)}
+                        className="bg-black/30 h-10 text-foreground font-mono uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="trade_year">Ano Modelo</Label>
+                      <Input
+                        id="trade_year"
+                        type="number"
+                        placeholder="Ex: 2022"
+                        value={tradeYear || ""}
+                        onChange={(e) => setTradeYear(Number(e.target.value))}
+                        className="bg-black/30 h-10 text-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="trade_color">Cor</Label>
+                      <Input
+                        id="trade_color"
+                        type="text"
+                        placeholder="Ex: Vermelho"
+                        value={tradeColor}
+                        onChange={(e) => setTradeColor(e.target.value)}
+                        className="bg-black/30 h-10 text-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="trade_renavam">Renavam</Label>
+                      <Input
+                        id="trade_renavam"
+                        type="text"
+                        placeholder="Somente números"
+                        value={tradeRenavam}
+                        onChange={(e) => setTradeRenavam(e.target.value)}
+                        className="bg-black/30 h-10 text-foreground font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="trade_chassis">Chassi</Label>
+                      <Input
+                        id="trade_chassis"
+                        type="text"
+                        placeholder="17 caracteres"
+                        value={tradeChassis}
+                        onChange={(e) => setTradeChassis(e.target.value)}
+                        className="bg-black/30 h-10 text-foreground font-mono uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs">
+                      <Label htmlFor="trade_mileage">Quilometragem</Label>
+                      <Input
+                        id="trade_mileage"
+                        type="number"
+                        placeholder="Ex: 15000"
+                        value={tradeMileage || ""}
+                        onChange={(e) => setTradeMileage(Number(e.target.value))}
+                        className="bg-black/30 h-10 text-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
+                      <Label htmlFor="trade_value" className="font-semibold text-amber-400">Valor de Avaliação (R$) *</Label>
+                      <Input
+                        id="trade_value"
+                        type="number"
+                        step="0.01"
+                        placeholder="Valor pago pelo veículo de troca"
+                        value={tradeValue || ""}
+                        onChange={(e) => setTradeValue(Number(e.target.value))}
+                        className="bg-black/30 h-10 text-foreground text-amber-400 font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seção 2: Detalhamento Financeiro e Diferença */}
+                <div className="p-4 bg-zinc-950/40 rounded-lg border border-border/40 space-y-4">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <DollarSign size={14} className="text-primary" /> Detalhamento de Fechamento de Caixa
+                  </h4>
+
+                  {tradeValue <= (Number(totalValue) + Number(cardSurcharge)) ? (
+                    // Caso A: Cliente paga a diferença para a loja
+                    <div className="space-y-4">
+                      <div className="p-3 bg-secondary/10 border border-border/20 rounded-md text-xs text-muted-foreground leading-relaxed">
+                        O veículo recebido na troca (<strong>R$ {formatCurrency(tradeValue)}</strong>) cobre parcialmente a venda de <strong>R$ {formatCurrency(Number(totalValue) + Number(cardSurcharge))}</strong>. 
+                        Informe abaixo como será quitada a diferença de <strong>R$ {formatCurrency(Math.max((Number(totalValue) + Number(cardSurcharge)) - tradeValue, 0))}</strong>.
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-1">
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="trade_cash">Espécie (Dinheiro) (R$)</Label>
+                          <Input
+                            id="trade_cash"
+                            type="number"
+                            step="0.01"
+                            value={tradeCash || ""}
+                            onChange={(e) => setTradeCash(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="trade_pix">PIX (R$)</Label>
+                          <Input
+                            id="trade_pix"
+                            type="number"
+                            step="0.01"
+                            value={tradePix || ""}
+                            onChange={(e) => setTradePix(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="trade_card">Cartão de Crédito/Débito (R$)</Label>
+                          <Input
+                            id="trade_card"
+                            type="number"
+                            step="0.01"
+                            value={tradeCard || ""}
+                            onChange={(e) => setTradeCard(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1.5 text-xs">
+                          <Label htmlFor="trade_financed">Financiamento (R$)</Label>
+                          <Input
+                            id="trade_financed"
+                            type="number"
+                            step="0.01"
+                            value={tradeFinanced || ""}
+                            onChange={(e) => setTradeFinanced(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-foreground"
+                          />
+                        </div>
+
+                        {tradeFinanced > 0 && (
+                          <>
+                            <div className="space-y-1.5 text-xs">
+                              <Label>Banco do Financiamento</Label>
+                              <Select
+                                value={tradeBank}
+                                onValueChange={(val) => setTradeBank(val)}
+                              >
+                                <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-10 text-xs">
+                                  <SelectValue placeholder="Escolha o banco" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-zinc-950 border border-border/40 text-foreground text-xs">
+                                  <SelectItem value="SANTANDER">Santander</SelectItem>
+                                  <SelectItem value="BV_FINANCEIRA">BV Financeira</SelectItem>
+                                  <SelectItem value="PAN">Banco Pan</SelectItem>
+                                  <SelectItem value="BRADESCO">Bradesco</SelectItem>
+                                  <SelectItem value="ITAUI">Itaú</SelectItem>
+                                  <SelectItem value="SAFRA">Safra</SelectItem>
+                                  <SelectItem value="Outro">Outro Banco</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {tradeBank === "Outro" && (
+                              <div className="space-y-1.5 text-xs">
+                                <Label htmlFor="trade_custom_bank">Nome do Banco *</Label>
+                                <Input
+                                  id="trade_custom_bank"
+                                  type="text"
+                                  placeholder="Digite o nome do banco"
+                                  value={tradeCustomBank}
+                                  onChange={(e) => setTradeCustomBank(e.target.value)}
+                                  className="bg-black/30 h-10 text-foreground"
+                                />
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
+                          <Label htmlFor="card_surcharge_trade">Juros / Acréscimo do Cartão (R$)</Label>
+                          <Input
+                            id="card_surcharge_trade"
+                            type="number"
+                            step="0.01"
+                            placeholder="Juros adicionados ao cartão"
+                            value={cardSurcharge || ""}
+                            onChange={(e) => setCardSurcharge(Number(e.target.value))}
+                            className="bg-black/30 h-10 text-amber-400 font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Demonstrativo em tempo real da diferença e saldo devedor */}
+                      <div className="p-4 bg-secondary/10 rounded-lg border border-border/40 space-y-3 mt-4 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-muted-foreground">Valor do Veículo de Venda:</span>
+                          <span className="font-mono font-bold text-foreground">{formatCurrency(Number(totalValue) || 0)}</span>
+                        </div>
+                        {cardSurcharge > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-amber-400">Juros/Acréscimo do Cartão (+):</span>
+                            <span className="font-mono font-bold text-amber-400">+{formatCurrency(cardSurcharge)}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between border-t border-border/20 pt-2 font-bold">
+                          <span className="text-foreground">Total Geral da Venda:</span>
+                          <span className="font-mono text-primary font-bold">{formatCurrency(Number(totalValue) + Number(cardSurcharge))}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-muted-foreground">Avaliação do Veículo de Troca (-):</span>
+                          <span className="font-mono text-amber-400 font-semibold">-{formatCurrency(tradeValue)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-muted-foreground">Soma de Complementos Pagos no Ato:</span>
+                          <span className="font-mono text-foreground">{formatCurrency(tradeCash + tradePix + tradeCard + tradeFinanced)}</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-border/20 pt-2 font-extrabold text-sm">
+                          <span className="text-muted-foreground">Saldo Restante a Quitar:</span>
+                          <span className={`font-mono ${
+                            (Number(totalValue) + Number(cardSurcharge) - (tradeValue + tradeCash + tradePix + tradeCard + tradeFinanced)) > 0 ? "text-amber-400" : "text-emerald-400"
+                          }`}>
+                            {formatCurrency(Math.max(Number(totalValue) + Number(cardSurcharge) - (tradeValue + tradeCash + tradePix + tradeCard + tradeFinanced), 0))}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Se houver saldo devedor restante */}
+                      {Math.max(Number(totalValue) + Number(cardSurcharge) - (tradeValue + tradeCash + tradePix + tradeCard + tradeFinanced), 0) > 0 && (
+                        <div className="p-4 bg-zinc-950/40 rounded-lg border border-amber-500/20 space-y-4 animate-in fade-in duration-200">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                            ⚠️ Saldo Devedor Detalhado (A Pagar Depois)
+                          </h4>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-1.5 text-xs">
+                              <Label>Forma de Pagamento do Saldo *</Label>
+                              <Select
+                                value={remainingMethod}
+                                onValueChange={(val) => setRemainingMethod(val)}
+                              >
+                                <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-9 text-xs">
+                                  <SelectValue placeholder="Escolha a forma" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-zinc-950 border border-border/40 text-foreground text-xs">
+                                  <SelectItem value="pix">PIX</SelectItem>
+                                  <SelectItem value="especie">Espécie (Dinheiro)</SelectItem>
+                                  <SelectItem value="cartao_parcelado">Cartão Parcelado</SelectItem>
+                                  <SelectItem value="promissoria">Promissória</SelectItem>
+                                  <SelectItem value="cheque">Cheque</SelectItem>
+                                  <SelectItem value="boleto">Boleto</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            <div className="space-y-1.5 text-xs">
+                              <Label>Quantidade de Parcelas *</Label>
+                              <Input
+                                type="number"
+                                min={1}
+                                value={remainingInstallments}
+                                onChange={(e) => setRemainingInstallments(Number(e.target.value))}
+                                className="bg-black/30 h-9 text-foreground text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5 text-xs">
+                              <Label>Data Limite para Conclusão *</Label>
+                              <Input
+                                type="date"
+                                value={remainingDueDate}
+                                onChange={(e) => setRemainingDueDate(e.target.value)}
+                                className="bg-black/30 h-9 text-foreground text-xs text-muted-foreground"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 text-xs">
+                            <Label>Como foi acordado (Observações do Saldo Devedor)</Label>
+                            <Input
+                              type="text"
+                              placeholder="Ex: R$ 2.000 para pagar em 4x no cartão com juros por fora na data X"
+                              value={remainingNotes}
+                              onChange={(e) => setRemainingNotes(e.target.value)}
+                              className="bg-black/30 h-9 text-xs text-foreground"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // Caso B: A loja deve dar o troco (Volta) para o cliente
+                    <div className="space-y-4">
+                      <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-xs text-emerald-400 leading-relaxed">
+                        O veículo recebido na troca (<strong>R$ {formatCurrency(tradeValue)}</strong>) superou o valor da venda de <strong>R$ {formatCurrency(Number(totalValue) + Number(cardSurcharge))}</strong>.
+                        A loja pagará uma volta/troco de <strong className="text-emerald-300 font-extrabold text-sm">R$ {formatCurrency(tradeValue - (Number(totalValue) + Number(cardSurcharge)))}</strong> ao cliente.
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1.5 text-xs">
+                          <Label>Forma de Devolução da Volta *</Label>
+                          <Select
+                            value={tradeRefundMethod}
+                            onValueChange={(val) => setTradeRefundMethod(val)}
+                          >
+                            <SelectTrigger className="bg-black/30 border-border/40 text-foreground h-9 text-xs">
+                              <SelectValue placeholder="Escolha a forma" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-zinc-950 border border-border/40 text-foreground text-xs">
+                              <SelectItem value="pix">PIX</SelectItem>
+                              <SelectItem value="especie">Espécie (Dinheiro)</SelectItem>
+                              <SelectItem value="transferencia">Transferência Bancária</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs">
+                          <Label>Data Programada para Devolução *</Label>
+                          <Input
+                            type="date"
+                            value={tradeRefundDueDate}
+                            onChange={(e) => setTradeRefundDueDate(e.target.value)}
+                            className="bg-black/30 h-9 text-foreground text-xs text-muted-foreground"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 text-xs">
+                          <Label>Dados Bancários ou Chave PIX</Label>
+                          <Input
+                            type="text"
+                            placeholder="Chave PIX ou Agência e Conta"
+                            value={tradeRefundPixKey}
+                            onChange={(e) => setTradeRefundPixKey(e.target.value)}
+                            className="bg-black/30 h-9 text-xs text-foreground"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs">
+                        <Label>Observações da Volta / Troco</Label>
+                        <Input
+                          type="text"
+                          placeholder="Notas adicionais sobre o pagamento do troco"
+                          value={tradeRefundNotes}
+                          onChange={(e) => setTradeRefundNotes(e.target.value)}
+                          className="bg-black/30 h-9 text-xs text-foreground"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

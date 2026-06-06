@@ -242,6 +242,28 @@ export interface Contract {
   refund_due_date?: string;
   refund_pix_key?: string;
   refund_notes?: string;
+  // Campos de Veículo de Troca (Compra e Venda)
+  trade_brand_model?: string;
+  trade_plate?: string;
+  trade_year?: number;
+  trade_color?: string;
+  trade_renavam?: string;
+  trade_chassis?: string;
+  trade_mileage?: number;
+  trade_value?: number;
+  trade_category?: "carro" | "moto";
+  trade_cash?: number;
+  trade_pix?: number;
+  trade_card?: number;
+  trade_financed?: number;
+  trade_bank?: string;
+  trade_custom_bank?: string;
+  card_surcharge?: number;
+  remaining_balance?: number;
+  remaining_installments?: number;
+  remaining_due_date?: string;
+  remaining_method?: string;
+  remaining_notes?: string;
   // Relacionamentos carregados opcionalmente
   client?: Client;
   vehicle?: Vehicle;

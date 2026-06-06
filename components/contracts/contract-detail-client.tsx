@@ -649,6 +649,151 @@ export function ContractDetailClient({
                         <span className="text-base font-bold text-foreground">{contract.consignation_period_days || 0} dias</span>
                       </div>
                     </div>
+                  ) : contract.modality === "compra_venda" ? (
+                    <div className="space-y-6 pb-4 border-b border-border/30">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Coluna 1: Veículo da Troca */}
+                        <div className="space-y-3 p-4 bg-zinc-950/30 rounded-lg border border-border/40">
+                          <h4 className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
+                            🚗 Veículo Recebido na Troca (Entrada)
+                          </h4>
+                          <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs leading-relaxed">
+                            <div>
+                              <span className="text-muted-foreground block">Marca / Modelo:</span>
+                              <span className="font-semibold text-foreground">{contract.trade_brand_model || "Não informado"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block">Placa:</span>
+                              <span className="font-mono font-semibold text-foreground uppercase">{contract.trade_plate || "Não informada"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block">Ano Modelo / Cor:</span>
+                              <span className="font-semibold text-foreground">{contract.trade_year || "Não informado"} / {contract.trade_color || "Não informada"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block">Categoria:</span>
+                              <span className="font-semibold text-foreground capitalize">{contract.trade_category || "moto"}</span>
+                            </div>
+                            {contract.trade_renavam && (
+                              <div>
+                                <span className="text-muted-foreground block">Renavam:</span>
+                                <span className="font-mono text-foreground">{contract.trade_renavam}</span>
+                              </div>
+                            )}
+                            {contract.trade_chassis && (
+                              <div>
+                                <span className="text-muted-foreground block">Chassi:</span>
+                                <span className="font-mono text-foreground uppercase">{contract.trade_chassis}</span>
+                              </div>
+                            )}
+                            {contract.trade_mileage !== undefined && (
+                              <div>
+                                <span className="text-muted-foreground block">Quilometragem:</span>
+                                <span className="text-foreground">{formatMileage(contract.trade_mileage)} km</span>
+                              </div>
+                            )}
+                            <div className="col-span-2 border-t border-border/20 pt-2 mt-1">
+                              <span className="text-muted-foreground block">Valor de Avaliação:</span>
+                              <span className="text-base font-extrabold text-amber-400">{formatCurrency(contract.trade_value || 0)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Coluna 2: Composição Financeira */}
+                        <div className="space-y-3 p-4 bg-zinc-950/30 rounded-lg border border-border/40">
+                          <h4 className="font-bold text-xs uppercase tracking-wider text-primary flex items-center gap-1.5">
+                            📊 Composição do Acerto de Valores
+                          </h4>
+                          <div className="space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Valor do Veículo Vendido:</span>
+                              <span className="font-mono font-bold text-foreground">{formatCurrency(contract.total_value)}</span>
+                            </div>
+                            {contract.card_surcharge ? (
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Juros/Acréscimo do Cartão (+):</span>
+                                <span className="font-mono font-bold text-amber-400">+{formatCurrency(contract.card_surcharge)}</span>
+                              </div>
+                            ) : null}
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Avaliação do Veículo de Troca (-):</span>
+                              <span className="font-mono font-bold text-amber-400">-{formatCurrency(contract.trade_value || 0)}</span>
+                            </div>
+
+                            {/* Detalhamento de Complementos */}
+                            {((contract.trade_cash || 0) > 0 || (contract.trade_pix || 0) > 0 || (contract.trade_card || 0) > 0 || (contract.trade_financed || 0) > 0) && (
+                              <div className="border-t border-dashed border-border/20 pt-2 mt-1 space-y-1 text-[11px] text-muted-foreground">
+                                <span className="block font-semibold text-foreground mb-1">Diferença Paga no Ato:</span>
+                                {contract.trade_cash ? (
+                                  <div className="flex items-center justify-between">
+                                    <span>• Espécie (Dinheiro):</span>
+                                    <span className="font-mono font-semibold text-foreground">{formatCurrency(contract.trade_cash)}</span>
+                                  </div>
+                                ) : null}
+                                {contract.trade_pix ? (
+                                  <div className="flex items-center justify-between">
+                                    <span>• PIX:</span>
+                                    <span className="font-mono font-semibold text-foreground">{formatCurrency(contract.trade_pix)}</span>
+                                  </div>
+                                ) : null}
+                                {contract.trade_card ? (
+                                  <div className="flex items-center justify-between">
+                                    <span>• Cartão Crédito/Débito:</span>
+                                    <span className="font-mono font-semibold text-foreground">{formatCurrency(contract.trade_card)}</span>
+                                  </div>
+                                ) : null}
+                                {contract.trade_financed ? (
+                                  <div className="flex items-center justify-between">
+                                    <span>• Financiamento ({contract.trade_bank}):</span>
+                                    <span className="font-mono font-semibold text-foreground">{formatCurrency(contract.trade_financed)}</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+
+                            {/* Saldo Restante / Volta */}
+                            {(contract.remaining_balance || 0) > 0 ? (
+                              <div className="border-t border-border/20 pt-2 mt-2 space-y-1">
+                                <div className="flex items-center justify-between text-sm font-bold text-amber-400">
+                                  <span>Saldo Restante a Quitar:</span>
+                                  <span>{formatCurrency(contract.remaining_balance || 0)}</span>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                                  Pagamento programado em <strong>{contract.remaining_installments || 1}x</strong> via <strong>{
+                                    contract.remaining_method === "pix" ? "PIX" :
+                                    contract.remaining_method === "especie" ? "Espécie" :
+                                    contract.remaining_method === "cartao_parcelado" ? "Cartão Parcelado" :
+                                    contract.remaining_method === "promissoria" ? "Promissória" :
+                                    contract.remaining_method === "cheque" ? "Cheque" :
+                                    contract.remaining_method === "boleto" ? "Boleto" : contract.remaining_method
+                                  }</strong>
+                                  {contract.remaining_due_date ? ` até ${new Date(contract.remaining_due_date).toLocaleDateString("pt-BR", { timeZone: "UTC" })}` : ""}.
+                                  {contract.remaining_notes && <p className="mt-0.5">Obs: {contract.remaining_notes}</p>}
+                                </div>
+                              </div>
+                            ) : (contract.refund_value || 0) > 0 ? (
+                              <div className="border-t border-border/20 pt-2 mt-2 space-y-1">
+                                <div className="flex items-center justify-between text-sm font-bold text-emerald-400">
+                                  <span>Volta (Troco) Devida ao Cliente:</span>
+                                  <span>{formatCurrency(contract.refund_value || 0)}</span>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground leading-relaxed mt-1">
+                                  A pagar pela loja via <strong>{contract.refund_method === "pix" ? "PIX" : contract.refund_method === "especie" ? "Espécie" : "Transferência Bancária"}</strong>
+                                  {contract.refund_due_date ? ` até ${new Date(contract.refund_due_date).toLocaleDateString("pt-BR", { timeZone: "UTC" })}` : ""}.
+                                  {contract.refund_pix_key && <p className="font-mono text-[9px] mt-0.5">Chave/Dados: {contract.refund_pix_key}</p>}
+                                  {contract.refund_notes && <p className="mt-0.5">Obs: {contract.refund_notes}</p>}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="border-t border-border/20 pt-2 mt-2 flex items-center justify-between text-xs font-bold text-emerald-400">
+                                <span>Operação Totalmente Quitada:</span>
+                                <span>R$ 0,00 pendente</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-4 border-b border-border/30">
                       <div>
