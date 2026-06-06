@@ -1,41 +1,19 @@
 diff --git a/components/contracts/contract-form-client.tsx b/components/contracts/contract-form-client.tsx
-index 14485e8..7367358 100644
+index 7367358..231971c 100644
 --- a/components/contracts/contract-form-client.tsx
 +++ b/components/contracts/contract-form-client.tsx
-@@ -35,6 +35,7 @@ import {
-   ShieldCheck,
-   RotateCcw,
-   Sparkles,
-+  Upload,
- } from "lucide-react";
- import { formatCurrency, formatMileage } from "@/utils/formatters";
- import { formatCPF } from "@/utils/validators";
-@@ -640,6 +641,354 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
-     alert(`Por favor, corrija os erros de validação antes de gerar a proposta:\n\n${messages}`);
+@@ -989,6 +989,345 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
+     }
    };
  
-+  // CRLV PDF and QR Code reader states and functions
-+  const [isReadingCRLV, setIsReadingCRLV] = useState(false);
++  // CRLV PDF and QR Code reader states and functions for Main Vehicle
++  const [isReadingMainCRLV, setIsReadingMainCRLV] = useState(false);
 +
-+  const loadScript = (url: string): Promise<void> => {
-+    return new Promise((resolve, reject) => {
-+      if (document.querySelector(`script[src="${url}"]`)) {
-+        resolve();
-+        return;
-+      }
-+      const script = document.createElement("script");
-+      script.src = url;
-+      script.onload = () => resolve();
-+      script.onerror = (err) => reject(err);
-+      document.body.appendChild(script);
-+    });
-+  };
-+
-+  const handleCRLVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
++  const handleMainCRLVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
 +    const file = e.target.files?.[0];
 +    if (!file) return;
 +
-+    setIsReadingCRLV(true);
++    setIsReadingMainCRLV(true);
 +    try {
 +      if (file.type === "application/pdf") {
 +        await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
@@ -54,7 +32,7 @@ index 14485e8..7367358 100644
 +          fullText += pageText + "\n";
 +        }
 +
-+        parseAndFillCRLVText(fullText);
++        parseAndFillMainCRLVText(fullText);
 +      } else if (file.type.startsWith("image/")) {
 +        await loadScript("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js");
 +        
@@ -70,7 +48,7 @@ index 14485e8..7367358 100644
 +          const context = canvas.getContext("2d");
 +          if (!context) {
 +            alert("Não foi possível inicializar o canvas para leitura do QR Code.");
-+            setIsReadingCRLV(false);
++            setIsReadingMainCRLV(false);
 +            return;
 +          }
 +
@@ -83,26 +61,26 @@ index 14485e8..7367358 100644
 +          const code = window.jsQR(imageData.data, imageData.width, imageData.height);
 +
 +          if (code) {
-+            parseAndFillCRLVUrl(code.data);
++            parseAndFillMainCRLVUrl(code.data);
 +          } else {
 +            alert("Nenhum QR Code legível foi detectado na imagem. Tente uma foto mais nítida ou focada apenas no QR Code.");
 +          }
-+          setIsReadingCRLV(false);
++          setIsReadingMainCRLV(false);
 +        };
 +
 +        reader.readAsDataURL(file);
 +      } else {
 +        alert("Formato de arquivo não suportado. Por favor, envie um PDF do CRLV ou uma imagem do QR Code.");
-+        setIsReadingCRLV(false);
++        setIsReadingMainCRLV(false);
 +      }
 +    } catch (err: any) {
-+      console.error("Erro ao ler CRLV:", err);
++      console.error("Erro ao ler CRLV do veículo principal:", err);
 +      alert("Erro ao ler o documento CRLV: " + (err.message || err));
-+      setIsReadingCRLV(false);
++      setIsReadingMainCRLV(false);
 +    }
 +  };
 +
-+  const parseAndFillCRLVText = (text: string) => {
++  const parseAndFillMainCRLVText = (text: string) => {
 +    const textUpper = text.toUpperCase();
 +
 +    const cleanOwnerName = (rawName: string): string => {
@@ -271,23 +249,8 @@ index 14485e8..7367358 100644
 +      }
 +    }
 +
-+    // Preencher campos de troca
-+    if (plate) setTradePlate(plate.replace("-", "").toUpperCase());
-+    if (renavam) setTradeRenavam(renavam);
-+    if (chassis) setTradeChassis(chassis.toUpperCase());
-+    if (brand && model) {
-+      setTradeBrandModel(`${brand} ${model}`);
-+    } else if (brand) {
-+      setTradeBrandModel(brand);
-+    }
-+    if (year) setTradeYear(year);
-+    if (color) {
-+      setTradeColor(color.charAt(0).toUpperCase() + color.slice(1));
-+    }
-+    if (ownerName) setValue("former_owner_name", ownerName);
-+    if (ownerCpf) setValue("former_owner_cpf", ownerCpf);
-+
 +    // Auto-detect category
++    let category = "moto";
 +    const isMoto = textUpper.includes("MOTOCICLO") || 
 +                   textUpper.includes("MOTOCICLETA") || 
 +                   textUpper.includes("MOTONETA") || 
@@ -305,18 +268,32 @@ index 14485e8..7367358 100644
 +                    /\b(CARRO|AUTOMOVEL|AUTOMÓVEL|CAMIONETA|CAMINHONETE)\b/.test(textUpper);
 +
 +    if (isMoto) {
-+      setTradeCategory("moto");
++      category = "moto";
 +    } else if (isCarro) {
-+      setTradeCategory("carro");
-+    } else {
-+      setTradeCategory("moto"); // default para moto
++      category = "carro";
 +    }
 +
-+    setIsReadingCRLV(false);
-+    alert(`CRLV do Veículo da Troca lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}\n- Proprietário Anterior: ${ownerName || "Não encontrado"}\n- CPF/CNPJ: ${ownerCpf || "Não encontrado"}`);
++    // Preencher campos do veículo principal
++    setNewVehicleData(prev => ({
++      ...prev,
++      brand: brand || prev.brand,
++      model: model || prev.model,
++      year: year || prev.year,
++      color: color ? color.charAt(0).toUpperCase() + color.slice(1) : prev.color,
++      plate: plate ? plate.replace("-", "").toUpperCase() : prev.plate,
++      chassis: chassis ? chassis.toUpperCase() : prev.chassis,
++      renavam: renavam || prev.renavam,
++      category: category as any,
++    }));
++
++    if (ownerName) setValue("former_owner_name", ownerName);
++    if (ownerCpf) setValue("former_owner_cpf", ownerCpf);
++
++    setIsReadingMainCRLV(false);
++    alert(`CRLV do Veículo lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}\n- Proprietário Anterior: ${ownerName || "Não encontrado"}\n- CPF/CNPJ: ${ownerCpf || "Não encontrado"}`);
 +  };
 +
-+  const parseAndFillCRLVUrl = (urlText: string) => {
++  const parseAndFillMainCRLVUrl = (urlText: string) => {
 +    try {
 +      const urlLower = urlText.toLowerCase();
 +      
@@ -335,9 +312,12 @@ index 14485e8..7367358 100644
 +        chassis = urlText.match(/chassi=([a-z0-9]+)/i)?.[1] || "";
 +      }
 +
-+      if (plate) setTradePlate(plate.toUpperCase());
-+      if (renavam) setTradeRenavam(renavam);
-+      if (chassis) setTradeChassis(chassis.toUpperCase());
++      setNewVehicleData(prev => ({
++        ...prev,
++        plate: plate ? plate.toUpperCase() : prev.plate,
++        renavam: renavam || prev.renavam,
++        chassis: chassis ? chassis.toUpperCase() : prev.chassis,
++      }));
 +
 +      if (plate || renavam || chassis) {
 +        alert(`QR Code do CRLV lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate.toUpperCase() || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis.toUpperCase() || "Não encontrado"}\n\nNota: Fotos de QR Code preenchem os códigos de identificação. Para extrair marca, modelo e cor, anexe o PDF do documento completo.`);
@@ -350,9 +330,12 @@ index 14485e8..7367358 100644
 +      const renavam = urlText.match(/\b(\d{11})\b/)?.[1] || "";
 +      const chassis = urlText.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)?.[1] || "";
 +
-+      if (plate) setTradePlate(plate.replace("-", "").toUpperCase());
-+      if (renavam) setTradeRenavam(renavam);
-+      if (chassis) setTradeChassis(chassis.toUpperCase());
++      setNewVehicleData(prev => ({
++        ...prev,
++        plate: plate ? plate.replace("-", "").toUpperCase() : prev.plate,
++        renavam: renavam || prev.renavam,
++        chassis: chassis ? chassis.toUpperCase() : prev.chassis,
++      }));
 +
 +      if (plate || renavam || chassis) {
 +        alert(`QR Code lido via reconhecimento de texto!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}`);
@@ -365,44 +348,46 @@ index 14485e8..7367358 100644
    const handleNextStep = () => {
      if (step === 1) {
        if (clientRegType === "existing" && !selectedClientId) {
-@@ -1379,6 +1728,40 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
-                     🚗 Veículo Recebido na Troca (Entrada)
-                   </h4>
+@@ -1394,6 +1733,42 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
+                 <Label className="text-sm font-semibold">Ficha do Veículo Vendido</Label>
+               </div>
  
-+                  <div className="p-4 bg-secondary/15 rounded-lg border border-border/40 text-xs space-y-3">
-+                    <div className="flex items-center justify-between">
-+                      <div>
-+                        <h5 className="font-bold text-primary uppercase flex items-center gap-1.5 text-xs">
-+                          <FileCheck size={14} /> Importar CRLV do Veículo da Troca (Preenchimento Automático)
-+                        </h5>
-+                        <p className="text-[10px] text-muted-foreground">Arraste o PDF do CRLV ou a imagem do QR Code para preencher os dados do veículo de troca automaticamente.</p>
-+                      </div>
-+                    </div>
-+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-+                      <div className="relative border-2 border-dashed border-border/30 rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col items-center justify-center min-h-[90px] cursor-pointer">
-+                        <Input
-+                          type="file"
-+                          accept="application/pdf,image/*"
-+                          onChange={handleCRLVImport}
-+                          disabled={isReadingCRLV}
-+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-+                        />
-+                        <Upload size={24} className="text-muted-foreground mb-1" />
-+                        <span className="font-bold text-[11px] text-muted-foreground text-center">
-+                          {isReadingCRLV ? "Processando documento..." : "Anexar PDF do CRLV ou Imagem do QR Code"}
-+                        </span>
-+                      </div>
-+                      
-+                      <div className="text-[10px] text-muted-foreground bg-black/20 p-2.5 rounded border border-border/20 flex flex-col justify-center">
-+                        <p className="font-semibold text-primary mb-1">Como funciona:</p>
-+                        <ul className="list-disc list-inside space-y-0.5">
-+                          <li><strong>PDF do CRLV:</strong> Lê o texto do documento e extrai Categoria (Moto/Carro), Marca/Modelo, Placa, Renavam, Chassi, Ano, Cor e dados do proprietário anterior (Nome/CPF).</li>
-+                          <li><strong>Imagem do QR Code:</strong> Escaneia o QR Code do documento, decodifica a URL e puxa Placa, Renavam e Chassi.</li>
-+                        </ul>
-+                      </div>
++              {vehicleRegType === "manual" && (
++                <div className="p-4 bg-secondary/15 rounded-lg border border-border/40 text-xs space-y-3 animate-in fade-in duration-200">
++                  <div className="flex items-center justify-between">
++                    <div>
++                      <h5 className="font-bold text-primary uppercase flex items-center gap-1.5 text-xs">
++                        <FileCheck size={14} /> Importar CRLV do Veículo (Preenchimento Automático)
++                      </h5>
++                      <p className="text-[10px] text-muted-foreground">Arraste o PDF do CRLV ou a imagem do QR Code para preencher os dados do veículo automaticamente.</p>
 +                    </div>
 +                  </div>
++                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
++                    <div className="relative border-2 border-dashed border-border/30 rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col items-center justify-center min-h-[90px] cursor-pointer">
++                      <Input
++                        type="file"
++                        accept="application/pdf,image/*"
++                        onChange={handleMainCRLVImport}
++                        disabled={isReadingMainCRLV}
++                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
++                      />
++                      <Upload size={24} className="text-muted-foreground mb-1" />
++                      <span className="font-bold text-[11px] text-muted-foreground text-center">
++                        {isReadingMainCRLV ? "Processando documento..." : "Anexar PDF do CRLV ou Imagem do QR Code"}
++                      </span>
++                    </div>
++                    
++                    <div className="text-[10px] text-muted-foreground bg-black/20 p-2.5 rounded border border-border/20 flex flex-col justify-center">
++                      <p className="font-semibold text-primary mb-1">Como funciona:</p>
++                      <ul className="list-disc list-inside space-y-0.5">
++                        <li><strong>PDF do CRLV:</strong> Lê o texto do documento e extrai Categoria (Moto/Carro), Marca, Modelo, Placa, Renavam, Chassi, Ano, Cor e Proprietário (Nome/CPF).</li>
++                        <li><strong>Imagem do QR Code:</strong> Escaneia o QR Code do documento, decodifica a URL e puxa Placa, Renavam e Chassi.</li>
++                      </ul>
++                    </div>
++                  </div>
++                </div>
++              )}
 +
-                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                     <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
-                       <Label>Categoria *</Label>
+               <div className="space-y-3 p-4 bg-secondary/15 rounded-lg border border-border/40 text-xs">
+                 <div className="grid grid-cols-3 gap-3">
+                   <div className="space-y-1.5">
