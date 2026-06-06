@@ -1,0 +1,267 @@
+diff --git a/components/vehicles/vehicles-client.tsx b/components/vehicles/vehicles-client.tsx
+index fe2cae3..98f09e2 100644
+--- a/components/vehicles/vehicles-client.tsx
++++ b/components/vehicles/vehicles-client.tsx
+@@ -293,6 +293,220 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
+   const [printCategory, setPrintCategory] = useState("todos");
+   const [printStatus, setPrintStatus] = useState("disponivel");
+ 
++  // CRLV PDF and QR Code reader states and functions
++  const [isReadingCRLV, setIsReadingCRLV] = useState(false);
++
++  const loadScript = (url: string): Promise<void> => {
++    return new Promise((resolve, reject) => {
++      if (document.querySelector(`script[src="${url}"]`)) {
++        resolve();
++        return;
++      }
++      const script = document.createElement("script");
++      script.src = url;
++      script.onload = () => resolve();
++      script.onerror = (err) => reject(err);
++      document.body.appendChild(script);
++    });
++  };
++
++  const handleCRLVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
++    const file = e.target.files?.[0];
++    if (!file) return;
++
++    setIsReadingCRLV(true);
++    try {
++      if (file.type === "application/pdf") {
++        await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
++        // @ts-ignore
++        const pdfjsLib = window["pdfjs-dist/build/pdf"];
++        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
++
++        const arrayBuffer = await file.arrayBuffer();
++        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
++        let fullText = "";
++
++        for (let i = 1; i <= pdf.numPages; i++) {
++          const page = await pdf.getPage(i);
++          const textContent = await page.getTextContent();
++          const pageText = textContent.items.map((item: any) => item.str).join(" ");
++          fullText += pageText + "\n";
++        }
++
++        parseAndFillCRLVText(fullText);
++      } else if (file.type.startsWith("image/")) {
++        await loadScript("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js");
++        
++        const image = new Image();
++        const reader = new FileReader();
++
++        reader.onload = (event) => {
++          image.src = event.target?.result as string;
++        };
++
++        image.onload = () => {
++          const canvas = document.createElement("canvas");
++          const context = canvas.getContext("2d");
++          if (!context) {
++            alert("Não foi possível inicializar o canvas para leitura do QR Code.");
++            setIsReadingCRLV(false);
++            return;
++          }
++
++          canvas.width = image.width;
++          canvas.height = image.height;
++          context.drawImage(image, 0, 0, image.width, image.height);
++
++          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
++          // @ts-ignore
++          const code = window.jsQR(imageData.data, imageData.width, imageData.height);
++
++          if (code) {
++            parseAndFillCRLVUrl(code.data);
++          } else {
++            alert("Nenhum QR Code legível foi detectado na imagem. Tente uma foto mais nítida ou focada apenas no QR Code.");
++          }
++          setIsReadingCRLV(false);
++        };
++
++        reader.readAsDataURL(file);
++      } else {
++        alert("Formato de arquivo não suportado. Por favor, envie um PDF do CRLV ou uma imagem do QR Code.");
++        setIsReadingCRLV(false);
++      }
++    } catch (err: any) {
++      console.error("Erro ao ler CRLV:", err);
++      alert("Erro ao ler o documento CRLV: " + (err.message || err));
++      setIsReadingCRLV(false);
++    }
++  };
++
++  const parseAndFillCRLVText = (text: string) => {
++    const textUpper = text.toUpperCase();
++    
++    // 1. Placa
++    const plateRegex = /PLACA\s*:?\s*([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})/i;
++    let plate = textUpper.match(plateRegex)?.[1] || "";
++    if (!plate) {
++      const genericPlateRegex = /\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/i;
++      plate = textUpper.match(genericPlateRegex)?.[1] || "";
++    }
++    
++    // 2. Renavam
++    const renavamRegex = /RENAVAM\s*:?\s*(\d{11})/i;
++    let renavam = textUpper.match(renavamRegex)?.[1] || "";
++    if (!renavam) {
++      const genericRenavamRegex = /\b(\d{11})\b/;
++      renavam = textUpper.match(genericRenavamRegex)?.[1] || "";
++    }
++
++    // 3. Chassi
++    const chassisRegex = /CHASSI\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i;
++    let chassis = textUpper.match(chassisRegex)?.[1] || "";
++    if (!chassis) {
++      const genericChassisRegex = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
++      chassis = textUpper.match(genericChassisRegex)?.[1] || "";
++    }
++
++    // 4. Marca/Modelo
++    const modelRegex = /MARCA\s*[\/\-]?\s*MODELO\s*:?\s*([A-Z0-9\s\-\/]+?)(?=\s{2,}|[A-Z]+:|\n|$)/i;
++    let brandModel = textUpper.match(modelRegex)?.[1]?.trim() || "";
++    let brand = "";
++    let model = "";
++    if (brandModel) {
++      if (brandModel.includes("/")) {
++        const parts = brandModel.split("/");
++        brand = parts[0].trim();
++        model = parts.slice(1).join("/").trim();
++      } else {
++        const parts = brandModel.split(/\s+/);
++        brand = parts[0].trim();
++        model = parts.slice(1).join(" ").trim();
++      }
++    }
++
++    // 5. Ano Modelo
++    const yearRegex = /ANO\s+MOD(?:ELO)?\s*:?\s*(\d{4})/i;
++    let yearStr = textUpper.match(yearRegex)?.[1] || "";
++    if (!yearStr) {
++      const yearFabrModRegex = /(\d{4})\s*\/\s*(\d{4})/;
++      const match = textUpper.match(yearFabrModRegex);
++      if (match) {
++        yearStr = match[2];
++      }
++    }
++    const year = yearStr ? parseInt(yearStr) : new Date().getFullYear();
++
++    // 6. Cor Predominante
++    const colorRegex = /COR\s*(?:PREDOMINANTE)?\s*:?\s*([A-Z]{3,})(?=\s{2,}|\n|$)/i;
++    const color = textUpper.match(colorRegex)?.[1]?.trim().toLowerCase() || "";
++
++    // Preencher campos no formulário
++    if (plate) setValue("plate", plate.replace("-", "").toUpperCase());
++    if (renavam) setValue("renavam", renavam);
++    if (chassis) setValue("chassis", chassis.toUpperCase());
++    if (brand) setValue("brand", brand);
++    if (model) setValue("model", model);
++    if (year) setValue("year", year);
++    if (color) setValue("color", color);
++
++    // Auto-detect category
++    if (textUpper.includes("MOTO") || textUpper.includes("MOTOCICLO") || textUpper.includes("MOTOCICLETA") || textUpper.includes("HONDA/") || textUpper.includes("YAMAHA/")) {
++      setValue("category", "moto");
++    } else {
++      setValue("category", "carro");
++    }
++
++    setIsReadingCRLV(false);
++    alert(`CRLV Lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}`);
++  };
++
++  const parseAndFillCRLVUrl = (urlText: string) => {
++    try {
++      const urlLower = urlText.toLowerCase();
++      
++      let plate = "";
++      let renavam = "";
++      let chassis = "";
++
++      if (urlLower.includes("chassi=") || urlLower.includes("renavam=")) {
++        const urlObj = new URL(urlText);
++        plate = urlObj.searchParams.get("placa") || "";
++        renavam = urlObj.searchParams.get("renavam") || "";
++        chassis = urlObj.searchParams.get("chassi") || "";
++      } else {
++        plate = urlText.match(/placa=([a-z0-9]+)/i)?.[1] || "";
++        renavam = urlText.match(/renavam=(\d+)/i)?.[1] || "";
++        chassis = urlText.match(/chassi=([a-z0-9]+)/i)?.[1] || "";
++      }
++
++      if (plate) setValue("plate", plate.toUpperCase());
++      if (renavam) setValue("renavam", renavam);
++      if (chassis) setValue("chassis", chassis.toUpperCase());
++
++      if (plate || renavam || chassis) {
++        alert(`QR Code do CRLV lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate.toUpperCase() || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis.toUpperCase() || "Não encontrado"}\n\nNota: Fotos de QR Code preenchem os códigos de identificação. Para extrair marca, modelo e cor, anexe o PDF do documento completo.`);
++      } else {
++        alert("O QR Code foi lido, mas não contém parâmetros conhecidos de CRLV (Placa, Renavam ou Chassi). Conteúdo lido:\n\n" + urlText);
++      }
++    } catch (err) {
++      console.warn("Erro ao parsear URL do QR Code:", err);
++      const plate = urlText.match(/\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/i)?.[1] || "";
++      const renavam = urlText.match(/\b(\d{11})\b/)?.[1] || "";
++      const chassis = urlText.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)?.[1] || "";
++
++      if (plate) setValue("plate", plate.replace("-", "").toUpperCase());
++      if (renavam) setValue("renavam", renavam);
++      if (chassis) setValue("chassis", chassis.toUpperCase());
++
++      if (plate || renavam || chassis) {
++        alert(`QR Code lido via reconhecimento de texto!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}`);
++      } else {
++        alert("O QR Code lido não continha informações de veículo válidas.\nConteúdo lido: " + urlText);
++      }
++    }
++  };
++
+   // Load publication configs from Firestore on mount to share between devices (with local fallback)
+   useEffect(() => {
+     const url = localStorage.getItem("catalog_url");
+@@ -2668,6 +2882,41 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
+ 
+               {/* Form Tab 1: Dados Básicos */}
+               <TabsContent value="form-basicos" className="space-y-4">
++                {/* Leitor de CRLV e QR Code */}
++                <div className="p-4 bg-secondary/15 rounded-lg border border-border/40 text-xs space-y-3">
++                  <div className="flex items-center justify-between">
++                    <div>
++                      <h4 className="font-bold text-primary uppercase flex items-center gap-1.5 text-xs">
++                        <FileCheck size={14} /> Importar CRLV (Preenchimento Automático)
++                      </h4>
++                      <p className="text-[10px] text-muted-foreground">Arraste o PDF do CRLV ou a imagem do QR Code do documento para preencher os dados automaticamente.</p>
++                    </div>
++                  </div>
++                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
++                    <div className="relative border-2 border-dashed border-border/30 rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col items-center justify-center min-h-[90px] cursor-pointer">
++                      <Input
++                        type="file"
++                        accept="application/pdf,image/*"
++                        onChange={handleCRLVImport}
++                        disabled={isReadingCRLV}
++                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
++                      />
++                      <Upload size={24} className="text-muted-foreground mb-1" />
++                      <span className="font-bold text-[11px] text-muted-foreground">
++                        {isReadingCRLV ? "Processando documento..." : "Anexar PDF do CRLV ou Imagem do QR Code"}
++                      </span>
++                    </div>
++                    
++                    <div className="text-[10px] text-muted-foreground bg-black/20 p-2.5 rounded border border-border/20 flex flex-col justify-center">
++                      <p className="font-semibold text-primary mb-1">Como funciona:</p>
++                      <ul className="list-disc list-inside space-y-0.5">
++                        <li><strong>PDF do CRLV:</strong> Lê o texto do documento e extrai Marca/Modelo, Placa, Renavam, Chassi, Ano e Cor.</li>
++                        <li><strong>Imagem do QR Code:</strong> Escaneia o QR Code do documento, decodifica a URL e puxa Placa, Renavam e Chassi.</li>
++                      </ul>
++                    </div>
++                  </div>
++                </div>
++
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                   <div className="space-y-1.5">
+                     <Label htmlFor="category">Categoria *</Label>
