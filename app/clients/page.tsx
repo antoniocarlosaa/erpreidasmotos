@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/actions/authActions";
 import { getClients } from "@/actions/clientActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { ClientsClient } from "@/components/clients/clients-client";
-
 import { Client } from "@/types";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0; // Fresh database records for list navigation
 
@@ -14,6 +14,16 @@ export default async function ClientsPage() {
 
   if (!profile) {
     redirect("/login");
+  }
+
+  const hasAccess = hasPermission(
+    profile.role,
+    "gerenciar_clientes",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
+    redirect("/dashboard");
   }
 
   // Pre-load clients lists on the server
@@ -32,6 +42,7 @@ export default async function ClientsPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

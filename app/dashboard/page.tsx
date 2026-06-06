@@ -60,13 +60,18 @@ export default async function DashboardPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };
 
   return (
     <SidebarLayout userProfile={userProfile}>
-      <DashboardClient data={dashboardData} />
+      <DashboardClient
+        data={dashboardData}
+        userRole={profile.role}
+        companyPermissions={profile.company?.permissions || null}
+      />
     </SidebarLayout>
   );
 }

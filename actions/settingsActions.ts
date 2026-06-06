@@ -293,3 +293,42 @@ export async function clearAuditLogs() {
     return { success: false, error: error.message };
   }
 }
+
+export async function updateRolePermissions(permissions: Record<string, string[]>) {
+  const user = await getCurrentUser();
+  if (!user || !user.company_id || user.role !== "admin") {
+    throw new Error("Não autorizado.");
+  }
+
+  try {
+    const companyId = user.company_id;
+    await db.collection("companies").doc(companyId).update({
+      permissions,
+      updated_at: new Date().toISOString(),
+    });
+
+    // Registrar ação no log de auditoria
+    await auditService.logAction(db, {
+      user_id: user.id,
+      company_id: companyId,
+      action: "UPDATE_ROLE_PERMISSIONS",
+      details: { updated_by: user.name, timestamp: new Date().toISOString() }
+    });
+
+    revalidatePath("/settings");
+    revalidatePath("/dashboard");
+    revalidatePath("/finance");
+    revalidatePath("/vehicles");
+    revalidatePath("/contracts");
+    revalidatePath("/transfer");
+    revalidatePath("/workshop");
+    revalidatePath("/workshop/inventory");
+    revalidatePath("/", "layout");
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Erro ao atualizar permissões dos cargos:", error);
+    return { success: false, error: error.message };
+  }
+}
+

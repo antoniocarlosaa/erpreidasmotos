@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/actions/authActions";
 import { getWorkshopProducts, getStockEntries, getStockExits } from "@/actions/workshopActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { InventoryClient } from "@/components/workshop/inventory-client";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0;
 
@@ -14,8 +15,13 @@ export default async function WorkshopInventoryPage() {
     redirect("/login");
   }
 
-  // Apenas Administradores, Operacional e Financeiro podem gerenciar estoque de peças
-  if (profile.role !== "admin" && profile.role !== "operacional" && profile.role !== "financeiro") {
+  const hasAccess = hasPermission(
+    profile.role,
+    "acessar_estoque_pecas",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
     redirect("/dashboard");
   }
 
@@ -38,6 +44,7 @@ export default async function WorkshopInventoryPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

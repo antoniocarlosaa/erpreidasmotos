@@ -34,6 +34,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatBRL, formatMileage } from "@/utils/formatters";
 import Link from "next/link";
+import { DEFAULT_PERMISSIONS } from "@/utils/permissions";
 
 interface DashboardClientProps {
   data: {
@@ -102,30 +103,46 @@ interface DashboardClientProps {
       }>;
     };
   };
+  userRole: string;
+  companyPermissions?: Record<string, string[]> | null;
 }
 
 const COLORS = ["#00f0ff", "#a855f7", "#3b82f6", "#e11d48", "#10b981", "#f59e0b"];
 const WARRANTY_COLORS = ["#10b981", "#ef4444"];
 const REVIEW_COLORS = ["#f59e0b", "#3b82f6"];
 
-export function DashboardClient({ data }: DashboardClientProps) {
+export function DashboardClient({ data, userRole, companyPermissions }: DashboardClientProps) {
   const { kpis, charts } = data;
 
-  const kpiCards = [
-    {
+  const rolePermissions = companyPermissions?.[userRole]
+    || DEFAULT_PERMISSIONS[userRole]
+    || [];
+
+  const hasPermission = (permission: string) => userRole === "admin" || rolePermissions.includes(permission);
+
+  const kpiCards = [];
+
+  if (hasPermission("dashboard_faturamento")) {
+    kpiCards.push({
       title: "Faturamento Total",
       value: formatBRL(kpis.totalSold),
       desc: "Receitas de contratos fechados",
       icon: DollarSign,
       color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-    },
-    {
+    });
+  }
+
+  if (hasPermission("dashboard_ticket_medio")) {
+    kpiCards.push({
       title: "Ticket Médio",
       value: formatBRL(kpis.ticketMedio),
       desc: "Média por veículo vendido",
       icon: TrendingUp,
       color: "text-primary bg-primary/10 border-primary/20",
-    },
+    });
+  }
+
+  kpiCards.push(
     {
       title: "Estoque Disponível",
       value: `${kpis.vehiclesInStock} unid.`,
@@ -153,8 +170,8 @@ export function DashboardClient({ data }: DashboardClientProps) {
       desc: "Monitoramento de pós-venda",
       icon: ShieldCheck,
       color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
-    },
-  ];
+    }
+  );
 
   return (
     <div className="space-y-8">
@@ -197,142 +214,155 @@ export function DashboardClient({ data }: DashboardClientProps) {
       </div>
 
       {/* Charts Grid - Vendas e Finanças */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Monthly Sales Area Chart */}
-        <Card className="glass-card border-white/5">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-primary">
-              <span className="h-2 w-2 rounded-full bg-primary" /> Vendas Recentes
-            </CardTitle>
-            <CardDescription>Valor mensal de contratos fechados nos últimos 6 meses</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80 pb-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={charts.chartSales} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
-                <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} />
-                <YAxis
-                  stroke="#a1a1aa"
-                  fontSize={11}
-                  tickLine={false}
-                  tickFormatter={(v) => `R$${v >= 1000 ? `${v / 1000}k` : v}`}
-                />
-                <Tooltip
-                  formatter={(value) => [formatBRL(Number(value)), "Vendas"]}
-                  contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
-                  labelStyle={{ color: "#a1a1aa", fontWeight: "bold" }}
-                />
-                <Area type="monotone" dataKey="valor" stroke="var(--primary)" fillOpacity={1} fill="url(#colorSales)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {(hasPermission("dashboard_grafico_vendas") ||
+        hasPermission("dashboard_grafico_caixa") ||
+        hasPermission("dashboard_grafico_projecao") ||
+        hasPermission("dashboard_grafico_categoria")) && (
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Monthly Sales Area Chart */}
+          {hasPermission("dashboard_grafico_vendas") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-primary">
+                  <span className="h-2 w-2 rounded-full bg-primary" /> Vendas Recentes
+                </CardTitle>
+                <CardDescription>Valor mensal de contratos fechados nos últimos 6 meses</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80 pb-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={charts.chartSales} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
+                    <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} />
+                    <YAxis
+                      stroke="#a1a1aa"
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(v) => `R$${v >= 1000 ? `${v / 1000}k` : v}`}
+                    />
+                    <Tooltip
+                      formatter={(value) => [formatBRL(Number(value)), "Vendas"]}
+                      contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
+                      labelStyle={{ color: "#a1a1aa", fontWeight: "bold" }}
+                    />
+                    <Area type="monotone" dataKey="valor" stroke="var(--primary)" fillOpacity={1} fill="url(#colorSales)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Realized Cash Flow Bar Chart */}
-        <Card className="glass-card border-white/5">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-emerald-400">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" /> Fluxo de Caixa Realizado
-            </CardTitle>
-            <CardDescription>Comparativo de Receitas vs Despesas realizadas nos últimos 6 meses</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80 pb-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={charts.chartCashFlow} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
-                <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} />
-                <YAxis
-                  stroke="#a1a1aa"
-                  fontSize={11}
-                  tickLine={false}
-                  tickFormatter={(v) => `R$${v >= 1000 ? `${v / 1000}k` : v}`}
-                />
-                <Tooltip
-                  formatter={(value, name) => [
-                    formatBRL(Number(value)),
-                    name === "receitas" ? "Receitas" : "Despesas",
-                  ]}
-                  contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
-                />
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="receitas" fill="#10b981" radius={[4, 4, 0, 0]} name="Receitas" />
-                <Bar dataKey="despesas" fill="#ef4444" radius={[4, 4, 0, 0]} name="Despesas" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          {/* Realized Cash Flow Bar Chart */}
+          {hasPermission("dashboard_grafico_caixa") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" /> Fluxo de Caixa Realizado
+                </CardTitle>
+                <CardDescription>Comparativo de Receitas vs Despesas realizadas nos últimos 6 meses</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80 pb-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={charts.chartCashFlow} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
+                    <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} />
+                    <YAxis
+                      stroke="#a1a1aa"
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(v) => `R$${v >= 1000 ? `${v / 1000}k` : v}`}
+                    />
+                    <Tooltip
+                      formatter={(value, name) => [
+                        formatBRL(Number(value)),
+                        name === "receitas" ? "Receitas" : "Despesas",
+                      ]}
+                      contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
+                    />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="receitas" fill="#10b981" radius={[4, 4, 0, 0]} name="Receitas" />
+                    <Bar dataKey="despesas" fill="#ef4444" radius={[4, 4, 0, 0]} name="Despesas" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Financial Receivables Projection */}
-        <Card className="glass-card border-white/5">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-cyan-400">
-              <span className="h-2 w-2 rounded-full bg-cyan-400" /> Projeção de Recebíveis
-            </CardTitle>
-            <CardDescription>Expectativa de entradas das parcelas a vencer nos próximos 4 meses</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80 pb-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={charts.chartProjection} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
-                <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} />
-                <YAxis
-                  stroke="#a1a1aa"
-                  fontSize={11}
-                  tickLine={false}
-                  tickFormatter={(v) => `R$${v >= 1000 ? `${v / 1000}k` : v}`}
-                />
-                <Tooltip
-                  formatter={(value) => [formatBRL(Number(value)), "A Receber"]}
-                  contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
-                />
-                <Line type="monotone" dataKey="valor" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Projeção" />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+          {/* Financial Receivables Projection */}
+          {hasPermission("dashboard_grafico_projecao") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-cyan-400">
+                  <span className="h-2 w-2 rounded-full bg-cyan-400" /> Projeção de Recebíveis
+                </CardTitle>
+                <CardDescription>Expectativa de entradas das parcelas a vencer nos próximos 4 meses</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80 pb-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={charts.chartProjection} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff0a" />
+                    <XAxis dataKey="name" stroke="#a1a1aa" fontSize={11} tickLine={false} />
+                    <YAxis
+                      stroke="#a1a1aa"
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(v) => `R$${v >= 1000 ? `${v / 1000}k` : v}`}
+                    />
+                    <Tooltip
+                      formatter={(value) => [formatBRL(Number(value)), "A Receber"]}
+                      contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
+                    />
+                    <Line type="monotone" dataKey="valor" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Projeção" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Category Share Donut Chart */}
-        <Card className="glass-card border-white/5">
-          <CardHeader>
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-purple-400">
-              <span className="h-2 w-2 rounded-full bg-purple-400" /> Vendas por Categoria
-            </CardTitle>
-            <CardDescription>Distribuição de veículos vendidos (Carro vs Moto)</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80 flex flex-col items-center justify-center pb-4">
-            <div className="w-full h-[80%]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={charts.chartCategory}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {charts.chartCategory.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => [`${value} unidades`, "Quantidade"]}
-                    contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
-                  />
-                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Category Share Donut Chart */}
+          {hasPermission("dashboard_grafico_categoria") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader>
+                <CardTitle className="text-sm font-semibold uppercase tracking-wider flex items-center gap-2 text-purple-400">
+                  <span className="h-2 w-2 rounded-full bg-purple-400" /> Vendas por Categoria
+                </CardTitle>
+                <CardDescription>Distribuição de veículos vendidos (Carro vs Moto)</CardDescription>
+              </CardHeader>
+              <CardContent className="h-80 flex flex-col items-center justify-center pb-4">
+                <div className="w-full h-[80%]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={charts.chartCategory}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {charts.chartCategory.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value) => [`${value} unidades`, "Quantidade"]}
+                        contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
+                      />
+                      <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* NEW SECTION: Pós-Venda e CRM */}
       <div className="rounded-xl border border-border bg-card p-4">
@@ -437,156 +467,166 @@ export function DashboardClient({ data }: DashboardClientProps) {
       </div>
 
       {/* NEW SECTION: Transparência de Dados (Origem dos Gráficos) */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Contratos Recentes */}
-        <Card className="glass-card border-white/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-primary" /> Contratos Recentes (Origem do Gráfico de Vendas)
-            </CardTitle>
-            <CardDescription>Os últimos 5 contratos gerados no sistema que alimentam o gráfico de vendas.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {!charts.recentContracts || charts.recentContracts.length === 0 ? (
-              <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhum contrato recente cadastrado.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono text-[11px] border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                      <th className="pb-2">Contrato</th>
-                      <th className="pb-2">Cliente / Veículo</th>
-                      <th className="pb-2">Tipo</th>
-                      <th className="pb-2 text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-900/60">
-                    {charts.recentContracts.map((c) => (
-                      <tr key={c.id} className="hover:bg-zinc-900/10 transition-colors">
-                        <td className="py-2.5 font-bold">
-                          <Link href={`/contracts/${c.id}`} className="text-primary hover:underline">
-                            #{c.contract_number}
-                          </Link>
-                        </td>
-                        <td className="py-2.5">
-                          <div className="text-foreground font-sans font-semibold">{c.clientName}</div>
-                          <div className="text-[9px] text-muted-foreground">{c.vehicleInfo}</div>
-                        </td>
-                        <td className="py-2.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${c.modality === "compra" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"}`}>
-                            {c.modality === "compra" ? "COMPRA" : "VENDA"}
-                          </span>
-                        </td>
-                        <td className="py-2.5 text-right font-bold text-foreground">
-                          {formatBRL(c.total_value)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {(hasPermission("dashboard_recent_contracts") ||
+        hasPermission("gerenciar_pos_venda") ||
+        hasPermission("dashboard_recent_transactions")) && (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {/* Contratos Recentes */}
+          {hasPermission("dashboard_recent_contracts") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-primary" /> Contratos Recentes (Origem do Gráfico de Vendas)
+                </CardTitle>
+                <CardDescription>Os últimos 5 contratos gerados no sistema que alimentam o gráfico de vendas.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {!charts.recentContracts || charts.recentContracts.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhum contrato recente cadastrado.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left font-mono text-[11px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                          <th className="pb-2">Contrato</th>
+                          <th className="pb-2">Cliente / Veículo</th>
+                          <th className="pb-2">Tipo</th>
+                          <th className="pb-2 text-right">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900/60">
+                        {charts.recentContracts.map((c) => (
+                          <tr key={c.id} className="hover:bg-zinc-900/10 transition-colors">
+                            <td className="py-2.5 font-bold">
+                              <Link href={`/contracts/${c.id}`} className="text-primary hover:underline">
+                                #{c.contract_number}
+                              </Link>
+                            </td>
+                            <td className="py-2.5">
+                              <div className="text-foreground font-sans font-semibold">{c.clientName}</div>
+                              <div className="text-[9px] text-muted-foreground">{c.vehicleInfo}</div>
+                            </td>
+                            <td className="py-2.5">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${c.modality === "compra" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"}`}>
+                                {c.modality === "compra" ? "COMPRA" : "VENDA"}
+                              </span>
+                            </td>
+                            <td className="py-2.5 text-right font-bold text-foreground">
+                              {formatBRL(c.total_value)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Garantias Ativas (Origem do KPI de Garantias) */}
-        <Card className="glass-card border-white/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-cyan-400" /> Garantias Ativas (Origem do KPI de Garantias)
-            </CardTitle>
-            <CardDescription>As 5 garantias ativas mais recentes no pós-venda.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {!charts.activeWarrantiesList || charts.activeWarrantiesList.length === 0 ? (
-              <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhuma garantia ativa cadastrada.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono text-[11px] border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                      <th className="pb-2">Contrato</th>
-                      <th className="pb-2">Cliente / Veículo</th>
-                      <th className="pb-2">Vencimento</th>
-                      <th className="pb-2 text-right">Prazo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-900/60">
-                    {charts.activeWarrantiesList.map((w) => (
-                      <tr key={w.id} className="hover:bg-zinc-900/10 transition-colors">
-                        <td className="py-2.5 font-bold">
-                          <Link href={`/contracts/${w.contract_id}`} className="text-primary hover:underline">
-                            #{w.contract_number}
-                          </Link>
-                        </td>
-                        <td className="py-2.5">
-                          <div className="text-foreground font-sans font-semibold">{w.clientName}</div>
-                          <div className="text-[9px] text-muted-foreground">{w.vehicleInfo}</div>
-                        </td>
-                        <td className="py-2.5 text-foreground font-sans">
-                          {w.end_date}
-                        </td>
-                        <td className={`py-2.5 text-right font-bold ${w.remainingDays <= 15 ? "text-rose-400" : "text-emerald-400"}`}>
-                          {w.remainingDays} dias
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {/* Garantias Ativas (Origem do KPI de Garantias) */}
+          {hasPermission("gerenciar_pos_venda") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-cyan-400" /> Garantias Ativas (Origem do KPI de Garantias)
+                </CardTitle>
+                <CardDescription>As 5 garantias ativas mais recentes no pós-venda.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {!charts.activeWarrantiesList || charts.activeWarrantiesList.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhuma garantia ativa cadastrada.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left font-mono text-[11px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                          <th className="pb-2">Contrato</th>
+                          <th className="pb-2">Cliente / Veículo</th>
+                          <th className="pb-2">Vencimento</th>
+                          <th className="pb-2 text-right">Prazo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900/60">
+                        {charts.activeWarrantiesList.map((w) => (
+                          <tr key={w.id} className="hover:bg-zinc-900/10 transition-colors">
+                            <td className="py-2.5 font-bold">
+                              <Link href={`/contracts/${w.contract_id}`} className="text-primary hover:underline">
+                                #{w.contract_number}
+                              </Link>
+                            </td>
+                            <td className="py-2.5">
+                              <div className="text-foreground font-sans font-semibold">{w.clientName}</div>
+                              <div className="text-[9px] text-muted-foreground">{w.vehicleInfo}</div>
+                            </td>
+                            <td className="py-2.5 text-foreground font-sans">
+                              {w.end_date}
+                            </td>
+                            <td className={`py-2.5 text-right font-bold ${w.remainingDays <= 15 ? "text-rose-400" : "text-emerald-400"}`}>
+                              {w.remainingDays} dias
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Lançamentos Financeiros Recentes */}
-        <Card className="glass-card border-white/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" /> Fluxo de Caixa Recente (Origem do Gráfico de Caixa)
-            </CardTitle>
-            <CardDescription>As últimas 5 movimentações no livro de caixa que alimentam o gráfico comparativo.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {!charts.recentTransactions || charts.recentTransactions.length === 0 ? (
-              <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhuma movimentação financeira recente.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono text-[11px] border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                      <th className="pb-2">Data</th>
-                      <th className="pb-2">Descrição / Categoria</th>
-                      <th className="pb-2">Tipo</th>
-                      <th className="pb-2 text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-900/60">
-                    {charts.recentTransactions.map((t) => (
-                      <tr key={t.id} className="hover:bg-zinc-900/10 transition-colors">
-                        <td className="py-2.5 text-muted-foreground">
-                          {t.entry_date}
-                        </td>
-                        <td className="py-2.5">
-                          <div className="text-foreground font-sans font-semibold">{t.description}</div>
-                          <div className="text-[9px] text-muted-foreground uppercase">{t.category} {t.payment_method ? `• ${t.payment_method}` : ""}</div>
-                        </td>
-                        <td className="py-2.5">
-                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${t.type === "RECEITA" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
-                            {t.type}
-                          </span>
-                        </td>
-                        <td className={`py-2.5 text-right font-bold ${t.type === "RECEITA" ? "text-emerald-400" : "text-red-400"}`}>
-                          {t.type === "RECEITA" ? "+" : "-"}{formatBRL(t.amount)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          {/* Lançamentos Financeiros Recentes */}
+          {hasPermission("dashboard_recent_transactions") && (
+            <Card className="glass-card border-white/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" /> Fluxo de Caixa Recente (Origem do Gráfico de Caixa)
+                </CardTitle>
+                <CardDescription>As últimas 5 movimentações no livro de caixa que alimentam o gráfico comparativo.</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {!charts.recentTransactions || charts.recentTransactions.length === 0 ? (
+                  <div className="text-center text-xs text-muted-foreground/40 py-8 font-sans">Nenhuma movimentação financeira recente.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left font-mono text-[11px] border-collapse">
+                      <thead>
+                        <tr className="border-b border-zinc-800 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                          <th className="pb-2">Data</th>
+                          <th className="pb-2">Descrição / Categoria</th>
+                          <th className="pb-2">Tipo</th>
+                          <th className="pb-2 text-right">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900/60">
+                        {charts.recentTransactions.map((t) => (
+                          <tr key={t.id} className="hover:bg-zinc-900/10 transition-colors">
+                            <td className="py-2.5 text-muted-foreground">
+                              {t.entry_date}
+                            </td>
+                            <td className="py-2.5">
+                              <div className="text-foreground font-sans font-semibold">{t.description}</div>
+                              <div className="text-[9px] text-muted-foreground uppercase">{t.category} {t.payment_method ? `• ${t.payment_method}` : ""}</div>
+                            </td>
+                            <td className="py-2.5">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${t.type === "RECEITA" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"}`}>
+                                {t.type}
+                              </span>
+                            </td>
+                            <td className={`py-2.5 text-right font-bold ${t.type === "RECEITA" ? "text-emerald-400" : "text-red-400"}`}>
+                              {t.type === "RECEITA" ? "+" : "-"}{formatBRL(t.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   );
 }

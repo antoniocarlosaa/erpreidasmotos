@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/actions/authActions";
 import { getVehicles } from "@/actions/vehicleActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { VehiclesClient } from "@/components/vehicles/vehicles-client";
-
 import { Vehicle } from "@/types";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0; // Fresh database records for list navigation
 
@@ -14,6 +14,16 @@ export default async function VehiclesPage() {
 
   if (!profile) {
     redirect("/login");
+  }
+
+  const hasAccess = hasPermission(
+    profile.role,
+    "gerenciar_veiculos",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
+    redirect("/dashboard");
   }
 
   // Pre-load vehicles lists on the server
@@ -32,6 +42,7 @@ export default async function VehiclesPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

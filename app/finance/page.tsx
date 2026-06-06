@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/actions/authActions";
 import { getFinancialEntries, getAllPayments } from "@/actions/financeActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { FinanceClient } from "@/components/finance/finance-client";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0; // Real-time data loading for financial updates
 
@@ -14,8 +15,13 @@ export default async function FinancePage() {
     redirect("/login");
   }
 
-  // Apenas Administradores e Financeiro podem acessar esta página
-  if (profile.role !== "admin" && profile.role !== "financeiro") {
+  const hasAccess = hasPermission(
+    profile.role,
+    "acessar_financeiro",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
     redirect("/dashboard");
   }
 
@@ -36,6 +42,7 @@ export default async function FinancePage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

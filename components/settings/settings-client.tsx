@@ -4,8 +4,9 @@ import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateCompanyDetails, createEmployee, deleteEmployee, updateEmployee, resetCompanyData, clearAuditLogs } from "@/actions/settingsActions";
+import { updateCompanyDetails, createEmployee, deleteEmployee, updateEmployee, resetCompanyData, clearAuditLogs, updateRolePermissions } from "@/actions/settingsActions";
 import { UserRole, AuditLog } from "@/types";
+import { DEFAULT_PERMISSIONS } from "@/utils/permissions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,8 @@ const renderActionDescription = (log: any) => {
       return `Realizou reset geral dos dados do sistema`;
     case "CLEAR_AUDIT_LOGS":
       return `Limpou os logs de auditoria da concessionária`;
+    case "UPDATE_ROLE_PERMISSIONS":
+      return `Atualizou as permissões de acesso dos cargos da empresa`;
 
     case "CREATE_TRANSFER_PROCESS":
       return `Iniciou processo de transferência para o contrato ID: ${details.contract_id || "N/A"}`;
@@ -177,6 +180,12 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs, in
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [isResetting, setIsResetting] = useState(false);
+
+  // Permissions states
+  const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>(
+    company?.permissions || DEFAULT_PERMISSIONS
+  );
+  const [isUpdatingPermissions, setIsUpdatingPermissions] = useState(false);
 
   const handleClearLogs = async () => {
     if (!confirm("Tem certeza que deseja limpar permanentemente todos os logs de auditoria da sua concessionária? Esta ação não pode ser desfeita.")) {
@@ -365,6 +374,38 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs, in
     }
   };
 
+  const handleTogglePermission = (role: string, permKey: string) => {
+    if (role === "admin") return;
+    
+    setRolePermissions((prev) => {
+      const currentPerms = prev[role] || [];
+      const updatedPerms = currentPerms.includes(permKey)
+        ? currentPerms.filter((p) => p !== permKey)
+        : [...currentPerms, permKey];
+      return {
+        ...prev,
+        [role]: updatedPerms,
+      };
+    });
+  };
+
+  const handleSavePermissions = async () => {
+    setIsUpdatingPermissions(true);
+    try {
+      const res = await updateRolePermissions(rolePermissions);
+      if (res.success) {
+        alert("Permissões de acesso atualizadas com sucesso!");
+        router.refresh();
+      } else {
+        alert(`Erro ao salvar permissões: ${res.error}`);
+      }
+    } catch (err: any) {
+      alert(`Erro inesperado: ${err.message}`);
+    } finally {
+      setIsUpdatingPermissions(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -377,18 +418,21 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs, in
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-1 sm:grid-cols-4 w-full max-w-2xl bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
+        <TabsList className="grid grid-cols-1 sm:grid-cols-5 w-full max-w-3xl bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
           <TabsTrigger value="company" className="rounded-md font-semibold text-xs gap-1.5">
             <Building2 size={14} /> Dados da Loja
           </TabsTrigger>
           <TabsTrigger value="employees" className="rounded-md font-semibold text-xs gap-1.5">
             <Users size={14} /> Equipe (ADM / Funcionários)
           </TabsTrigger>
+          <TabsTrigger value="permissions" className="rounded-md font-semibold text-xs gap-1.5">
+            <ShieldCheck size={14} /> Permissões
+          </TabsTrigger>
           <TabsTrigger value="auditoria" className="rounded-md font-semibold text-xs gap-1.5">
             <ShieldCheck size={14} /> Auditoria e Logs
           </TabsTrigger>
           <TabsTrigger value="sessoes" className="rounded-md font-semibold text-xs gap-1.5">
-            <Clock size={14} /> Hist├│rico de Acessos
+            <Clock size={14} /> Histórico de Acessos
           </TabsTrigger>
         </TabsList>
 
@@ -889,6 +933,124 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs, in
                 </Table>
               </div>
             </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* PERMISSÕES DE ACESSO */}
+        <TabsContent value="permissions" className="mt-4">
+          <Card className="glass-card border-white/5 max-w-5xl">
+            <CardHeader className="border-b border-border/40 pb-4">
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                <ShieldCheck size={16} /> Configuração de Permissões por Cargo
+              </CardTitle>
+              <CardDescription>
+                Selecione o que cada categoria de colaborador pode visualizar ou gerenciar no ERP. Administradores possuem acesso completo fixo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6 text-xs">
+              <div className="overflow-x-auto border border-border/45 rounded-lg bg-zinc-950/20">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/40 bg-zinc-900/50">
+                      <th className="p-3 font-bold text-foreground">Funcionalidade / Acesso</th>
+                      <th className="p-3 font-bold text-center w-28">Vendedor</th>
+                      <th className="p-3 font-bold text-center w-28">Operacional</th>
+                      <th className="p-3 font-bold text-center w-28">Financeiro</th>
+                      <th className="p-3 font-bold text-center w-28 text-muted-foreground/60">Administrador</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {
+                        title: "Módulo Painel Gerencial (Dashboard)",
+                        perms: [
+                          { key: "dashboard_faturamento", label: "Visualizar KPI de Faturamento Total" },
+                          { key: "dashboard_ticket_medio", label: "Visualizar KPI de Ticket Médio" },
+                          { key: "dashboard_grafico_vendas", label: "Visualizar Gráfico de Vendas Recentes" },
+                          { key: "dashboard_grafico_caixa", label: "Visualizar Gráfico de Fluxo de Caixa" },
+                          { key: "dashboard_grafico_projecao", label: "Visualizar Gráfico de Projeção de Recebíveis" },
+                          { key: "dashboard_grafico_categoria", label: "Visualizar Gráfico de Vendas por Categoria (Carro/Moto)" },
+                          { key: "dashboard_recent_contracts", label: "Visualizar Tabela de Contratos Recentes" },
+                          { key: "dashboard_recent_transactions", label: "Visualizar Tabela de Lançamentos Financeiros Recentes" },
+                        ]
+                      },
+                      {
+                        title: "Módulos de Negócios e Páginas",
+                        perms: [
+                          { key: "acessar_financeiro", label: "Acesso completo ao Módulo Financeiro" },
+                          { key: "gerenciar_clientes", label: "Cadastrar e gerenciar Clientes" },
+                          { key: "gerenciar_veiculos", label: "Cadastrar e gerenciar Veículos no Inventário" },
+                          { key: "gerenciar_contratos", label: "Criar, assinar e gerenciar Contratos / Vendas" },
+                          { key: "gerenciar_pos_venda", label: "Visualizar e atualizar Pós-Venda (CRM / Transferências)" },
+                          { key: "acessar_oficina", label: "Acesso ao Painel de Oficina (OS)" },
+                          { key: "acessar_estoque_pecas", label: "Acesso ao Estoque de Peças e Almoxarifado" },
+                        ]
+                      }
+                    ].map((section) => (
+                      <React.Fragment key={section.title}>
+                        <tr className="bg-zinc-900/60">
+                          <td colSpan={5} className="p-2.5 font-extrabold text-[10px] text-primary uppercase tracking-wider border-b border-border/20">
+                            {section.title}
+                          </td>
+                        </tr>
+                        {section.perms.map((perm) => (
+                          <tr key={perm.key} className="border-b border-border/25 hover:bg-white/[0.01] transition-colors">
+                            <td className="p-3 font-medium text-foreground">{perm.label}</td>
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={(rolePermissions["vendedor"] || []).includes(perm.key)}
+                                onChange={() => handleTogglePermission("vendedor", perm.key)}
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary bg-black/40 cursor-pointer accent-primary"
+                              />
+                            </td>
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={(rolePermissions["operacional"] || []).includes(perm.key)}
+                                onChange={() => handleTogglePermission("operacional", perm.key)}
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary bg-black/40 cursor-pointer accent-primary"
+                              />
+                            </td>
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={(rolePermissions["financeiro"] || []).includes(perm.key)}
+                                onChange={() => handleTogglePermission("financeiro", perm.key)}
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary bg-black/40 cursor-pointer accent-primary"
+                              />
+                            </td>
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                checked={true}
+                                disabled={true}
+                                className="h-4 w-4 rounded border-border bg-zinc-800 text-muted-foreground opacity-50 cursor-not-allowed"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+            <CardFooter className="p-6 border-t border-border/40 bg-secondary/5 flex justify-end gap-3">
+              <Button
+                type="button"
+                onClick={handleSavePermissions}
+                disabled={isUpdatingPermissions}
+                className="font-semibold gap-1.5 text-xs"
+              >
+                {isUpdatingPermissions ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
+                Salvar Configuração de Permissões
+              </Button>
+            </CardFooter>
           </Card>
         </TabsContent>
 

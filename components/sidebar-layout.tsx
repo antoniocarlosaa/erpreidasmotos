@@ -23,6 +23,7 @@ import {
   Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DEFAULT_PERMISSIONS } from "@/utils/permissions";
 
 interface SidebarLayoutProps {
   children: React.ReactNode;
@@ -32,6 +33,7 @@ interface SidebarLayoutProps {
     role: "admin" | "vendedor" | "operacional" | "financeiro";
     company?: {
       name: string;
+      permissions?: Record<string, string[]> | null;
     };
   };
 }
@@ -77,7 +79,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Veículos",
       href: "/vehicles",
       icon: Car,
-      roles: ["admin", "vendedor"],
+      permission: "gerenciar_veiculos",
       colorClass: "bg-cyan-500/10 border-cyan-500/20 text-cyan-400",
       iconColor: "text-cyan-400",
     },
@@ -85,7 +87,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Venda",
       href: "/contracts/new",
       icon: ShoppingCart,
-      roles: ["admin", "vendedor"],
+      permission: "gerenciar_contratos",
       colorClass: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
       iconColor: "text-emerald-400",
     },
@@ -93,7 +95,6 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
-      roles: ["admin", "vendedor", "operacional", "financeiro"],
       colorClass: "bg-indigo-500/10 border-indigo-500/20 text-indigo-400",
       iconColor: "text-indigo-400",
     },
@@ -101,7 +102,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Clientes",
       href: "/clients",
       icon: Users,
-      roles: ["admin", "vendedor"],
+      permission: "gerenciar_clientes",
       colorClass: "bg-blue-500/10 border-blue-500/20 text-blue-400",
       iconColor: "text-blue-400",
     },
@@ -109,7 +110,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Contratos",
       href: "/contracts",
       icon: FileText,
-      roles: ["admin", "vendedor"],
+      permission: "gerenciar_contratos",
       colorClass: "bg-purple-500/10 border-purple-500/20 text-purple-400",
       iconColor: "text-purple-400",
     },
@@ -117,7 +118,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Pós-Venda (CRM)",
       href: "/transfer",
       icon: FileCheck,
-      roles: ["admin", "operacional", "vendedor"],
+      permission: "gerenciar_pos_venda",
       colorClass: "bg-rose-500/10 border-rose-500/20 text-rose-400",
       iconColor: "text-rose-400",
     },
@@ -125,19 +126,19 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Financeiro",
       href: "/finance",
       icon: TrendingUp,
-      roles: ["admin", "financeiro"],
+      permission: "acessar_financeiro",
       colorClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
       iconColor: "text-amber-400",
     },
     {
       header: "OFICINA E ALMOXARIFADO",
-      roles: ["admin", "operacional", "financeiro"],
+      permission: "menu_oficina",
     },
     {
       name: "Painel Oficina (OS)",
       href: "/workshop",
       icon: Wrench,
-      roles: ["admin", "operacional"],
+      permission: "acessar_oficina",
       colorClass: "bg-blue-500/10 border-blue-500/20 text-blue-400",
       iconColor: "text-blue-400",
     },
@@ -145,30 +146,51 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Estoque de Peças",
       href: "/workshop/inventory",
       icon: Archive,
-      roles: ["admin", "operacional", "financeiro"],
+      permission: "acessar_estoque_pecas",
       colorClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
       iconColor: "text-amber-400",
     },
     {
       header: "SISTEMA",
-      roles: ["admin"],
+      adminOnly: true,
     },
     {
       name: "Configurações",
       href: "/settings",
       icon: Settings,
-      roles: ["admin"],
+      adminOnly: true,
       colorClass: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
       iconColor: "text-zinc-400",
     },
   ] as Array<
-    | { name: string; href: string; icon: any; roles: string[]; colorClass: string; iconColor: string }
-    | { header: string; roles: string[] }
+    | { name: string; href: string; icon: any; permission?: string; colorClass: string; iconColor: string }
+    | { header: string; permission?: string; adminOnly?: boolean }
   >;
 
-  const filteredItems = allItems.filter((item) =>
-    item.roles.includes(userProfile.role)
-  );
+  const rolePermissions = userProfile.company?.permissions?.[userProfile.role]
+    || DEFAULT_PERMISSIONS[userProfile.role]
+    || [];
+
+  const hasPermission = (permission?: string) => {
+    if (userProfile.role === "admin") return true;
+    if (!permission) return true;
+    return rolePermissions.includes(permission);
+  };
+
+  const filteredItems = allItems.filter((item) => {
+    if (userProfile.role === "admin") return true;
+    if ("adminOnly" in item && item.adminOnly) return false;
+
+    if ("header" in item) {
+      if (item.permission === "menu_oficina") {
+        return hasPermission("acessar_oficina") || hasPermission("acessar_estoque_pecas");
+      }
+      return true;
+    }
+
+    const linkItem = item as { permission?: string };
+    return hasPermission(linkItem.permission);
+  });
 
   const handleLogout = async () => {
     try {

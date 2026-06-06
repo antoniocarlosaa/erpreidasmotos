@@ -41,6 +41,7 @@ export default async function SettingsPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

@@ -5,6 +5,7 @@ import { getClients } from "@/actions/clientActions";
 import { getVehicles } from "@/actions/vehicleActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { ContractFormClient } from "@/components/contracts/contract-form-client";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0;
 
@@ -13,6 +14,16 @@ export default async function NewContractPage() {
 
   if (!profile) {
     redirect("/login");
+  }
+
+  const hasAccess = hasPermission(
+    profile.role,
+    "gerenciar_contratos",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
+    redirect("/dashboard");
   }
 
   // Pre-load active clients and available vehicles for contract generation
@@ -36,6 +47,7 @@ export default async function NewContractPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

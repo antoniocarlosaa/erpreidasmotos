@@ -5,6 +5,7 @@ import { getTransferProcesses } from "@/actions/transferActions";
 import { getContracts } from "@/actions/contractActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { TransferClient } from "@/components/transfer/transfer-client";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0;
 
@@ -13,6 +14,16 @@ export default async function TransferPage() {
 
   if (!profile) {
     redirect("/login");
+  }
+
+  const hasAccess = hasPermission(
+    profile.role,
+    "gerenciar_pos_venda",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
+    redirect("/dashboard");
   }
 
   // Pre-load transfer processes and contracts on the server
@@ -34,6 +45,7 @@ export default async function TransferPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

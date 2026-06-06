@@ -6,6 +6,7 @@ import { getPayments } from "@/actions/financeActions";
 import { getCompanyDetails } from "@/actions/settingsActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { ContractDetailClient } from "@/components/contracts/contract-detail-client";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0;
 
@@ -15,6 +16,16 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
 
   if (!profile) {
     redirect("/login");
+  }
+
+  const hasAccess = hasPermission(
+    profile.role,
+    "gerenciar_contratos",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
+    redirect("/dashboard");
   }
 
   const contract = await getContractById(id);
@@ -39,6 +50,7 @@ export default async function ContractDetailPage({ params }: { params: Promise<{
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };

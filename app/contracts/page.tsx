@@ -4,8 +4,8 @@ import { getCurrentUser } from "@/actions/authActions";
 import { getContracts } from "@/actions/contractActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { ContractsClient } from "@/components/contracts/contracts-client";
-
 import { Contract } from "@/types";
+import { hasPermission } from "@/utils/permissions";
 
 export const revalidate = 0; // Fresh database records for contracts list
 
@@ -14,6 +14,16 @@ export default async function ContractsPage() {
 
   if (!profile) {
     redirect("/login");
+  }
+
+  const hasAccess = hasPermission(
+    profile.role,
+    "gerenciar_contratos",
+    profile.company?.permissions
+  );
+
+  if (!hasAccess) {
+    redirect("/dashboard");
   }
 
   // Pre-load contracts lists on the server
@@ -32,6 +42,7 @@ export default async function ContractsPage() {
     company: profile.company
       ? {
           name: profile.company.name,
+          permissions: profile.company.permissions || null,
         }
       : undefined,
   };
