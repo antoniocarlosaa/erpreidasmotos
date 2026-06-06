@@ -1458,7 +1458,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       case "reservado":
         return <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">Reservado</Badge>;
       case "vendido":
-        return <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">Vendido</Badge>;
+        return <Badge className="bg-red-500/20 text-red-500 border border-red-500/40 font-bold">Vendido</Badge>;
       case "em_preparacao":
         return <Badge className="bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold">Em Preparação</Badge>;
       case "aguardando_documentacao":
@@ -1949,7 +1949,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                     key={vehicle.id}
                     className={`glass-card overflow-hidden group transition-all duration-300 flex flex-col justify-between ${
                       vehicle.status === "vendido"
-                        ? "border-red-500/25 bg-red-950/10 hover:border-red-500/40"
+                        ? "border-red-500/50 bg-red-950/15 hover:border-red-500 shadow-md shadow-red-500/5"
                         : "border-white/5 hover:border-primary/20"
                     }`}
                   >
@@ -1958,7 +1958,9 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         <img
                           src={vehicle.photos_ready[0]}
                           alt={`${vehicle.brand} ${vehicle.model}`}
-                          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                          className={`object-cover w-full h-full group-hover:scale-105 transition-transform duration-500 ${
+                            vehicle.status === "vendido" ? "opacity-40 grayscale-[40%]" : ""
+                          }`}
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1542282088-fe8426682b8f?w=600&auto=format&fit=crop&q=60";
                           }}
@@ -1967,7 +1969,9 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         <img
                           src={vehicle.photos[0]}
                           alt={`${vehicle.brand} ${vehicle.model}`}
-                          className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                          className={`object-cover w-full h-full group-hover:scale-105 transition-transform duration-500 ${
+                            vehicle.status === "vendido" ? "opacity-40 grayscale-[40%]" : ""
+                          }`}
                           onError={(e) => {
                             (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1542282088-fe8426682b8f?w=600&auto=format&fit=crop&q=60";
                           }}
@@ -2111,26 +2115,12 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent border-border/40">
-                      <TableHead className="font-semibold">Modelo</TableHead>
-                      <TableHead className="font-semibold">Placa</TableHead>
-                      {statusFilter === "vendido" ? (
-                        <>
-                          <TableHead className="font-semibold">Data Venda</TableHead>
-                          <TableHead className="font-semibold">Quem Vendeu/Recebeu</TableHead>
-                          <TableHead className="font-semibold">Forma da Venda</TableHead>
-                          <TableHead className="font-semibold">Modalidade</TableHead>
-                          <TableHead className="font-semibold">Valor Venda</TableHead>
-                        </>
-                      ) : (
-                        <>
-                          <TableHead className="font-semibold">Compra (Aval.)</TableHead>
-                          <TableHead className="font-semibold">Custos e Despesas</TableHead>
-                          <TableHead className="font-semibold">Total Investido</TableHead>
-                          <TableHead className="font-semibold">Preço Venda</TableHead>
-                          <TableHead className="font-semibold">Margem / Lucro</TableHead>
-                        </>
-                      )}
-                      <TableHead className="font-semibold">Tempo Estoque</TableHead>
+                      <TableHead className="font-semibold">Veículo</TableHead>
+                      <TableHead className="font-semibold">Placa / Renavam</TableHead>
+                      <TableHead className="font-semibold">KM / Cor</TableHead>
+                      <TableHead className="font-semibold">Compra / Custos</TableHead>
+                      <TableHead className="font-semibold">Venda / Lucro</TableHead>
+                      <TableHead className="font-semibold">Entrada / Tempo</TableHead>
                       <TableHead className="font-semibold">Status</TableHead>
                       <TableHead className="font-semibold text-right">Ações</TableHead>
                     </TableRow>
@@ -2155,8 +2145,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       return (
                         <TableRow 
                           key={vehicle.id} 
-                          className={`border-border/40 hover:bg-secondary/20 ${
-                            vehicle.status === "vendido" ? "bg-red-950/5 hover:bg-red-950/10" : ""
+                          className={`border-border/40 hover:bg-secondary/20 transition-colors ${
+                            vehicle.status === "vendido" ? "bg-red-950/15 hover:bg-red-950/25 border-red-500/20" : ""
                           }`}
                         >
                           <TableCell className="font-medium text-foreground">
@@ -2171,53 +2161,81 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                 )}
                               </div>
                               <div>
-                                <p className="font-bold text-sm text-foreground">{vehicle.model}</p>
+                                <p className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                                  {getCategoryIcon(vehicle.category)}
+                                  {vehicle.model}
+                                </p>
                                 <p className="text-xs text-muted-foreground">{vehicle.brand} • {vehicle.year}</p>
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="font-mono text-muted-foreground">{vehicle.plate}</TableCell>
-                          
-                          {statusFilter === "vendido" ? (
-                            <>
-                              <TableCell className="text-foreground">
-                                {detail?.sale_date ? new Date(detail.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : detail?.stock_metrics?.sale_date ? new Date(detail.stock_metrics.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "-"}
-                              </TableCell>
-                              <TableCell className="text-foreground font-semibold">
-                                {detail?.sold_by_name || "-"}
-                              </TableCell>
-                              <TableCell className="text-foreground capitalize">
-                                {detail?.payment_method || "-"}
-                              </TableCell>
-                              <TableCell className="text-foreground capitalize">
-                                {detail?.sale_modality || "-"}
-                              </TableCell>
-                              <TableCell className="font-bold text-emerald-400">
-                                {formatCurrency(salePrice)}
-                              </TableCell>
-                            </>
-                          ) : (
-                            <>
-                              <TableCell className="font-semibold text-foreground">{formatCurrency(appraisal)}</TableCell>
-                              <TableCell className="font-semibold text-red-400">{formatCurrency(expensesTotal)}</TableCell>
-                              <TableCell className="font-semibold text-cyan-400">{formatCurrency(totalInvested)}</TableCell>
-                              <TableCell className="font-semibold text-primary">{formatCurrency(salePrice)}</TableCell>
-                              <TableCell className={`font-bold ${profit >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                                {margin.toFixed(0)}% ({formatCurrency(profit)})
-                              </TableCell>
-                            </>
-                          )}
+
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-bold font-mono text-sm text-foreground">{vehicle.plate}</span>
+                              <span className="text-[11px] font-mono text-muted-foreground">{vehicle.renavam || "Sem Renavam"}</span>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="text-sm text-foreground">{formatMileage(vehicle.mileage)} km</span>
+                              <span className="text-xs text-muted-foreground capitalize">{vehicle.color}</span>
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="text-sm text-foreground">{formatCurrency(appraisal)}</span>
+                              <span className="text-xs text-red-400 font-semibold">{expensesTotal > 0 ? `+ ${formatCurrency(expensesTotal)}` : "Sem custos"}</span>
+                            </div>
+                          </TableCell>
 
                           <TableCell>
                             {vehicle.status === "vendido" ? (
-                              <span className="text-xs text-muted-foreground">Vendido</span>
+                              <div className="flex flex-col">
+                                <span className="text-sm text-emerald-400 font-bold">{formatCurrency(salePrice)}</span>
+                                <span className="text-xs text-emerald-500 font-semibold">
+                                  Lucro: {formatCurrency(profit)} ({margin.toFixed(0)}%)
+                                </span>
+                              </div>
                             ) : (
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded ${days >= 90 ? "bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse" : days >= 60 ? "bg-orange-500/10 text-orange-400 border border-orange-500/20" : days >= 30 ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "text-muted-foreground"}`}>
-                                {days} dias
-                              </span>
+                              <div className="flex flex-col">
+                                <span className="text-sm text-primary font-bold">{formatCurrency(salePrice)}</span>
+                                <span className={`text-xs font-semibold ${profit >= 0 ? "text-emerald-500/80" : "text-red-500/80"}`}>
+                                  Est. Lucro: {formatCurrency(profit)} ({margin.toFixed(0)}%)
+                                </span>
+                              </div>
                             )}
                           </TableCell>
+
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="text-xs text-muted-foreground">
+                                {vehicle.status === "vendido" ? (
+                                  <span>
+                                    Vendido: {detail?.sale_date ? new Date(detail.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : detail?.stock_metrics?.sale_date ? new Date(detail.stock_metrics.sale_date).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "-"}
+                                  </span>
+                                ) : (
+                                  <span>
+                                    Entrada: {detail?.stock_metrics?.entry_date ? new Date(detail.stock_metrics.entry_date + "T00:00:00").toLocaleDateString("pt-BR") : vehicle.created_at?.split("T")[0] ? new Date(vehicle.created_at.split("T")[0] + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-xs mt-0.5">
+                                {vehicle.status === "vendido" ? (
+                                  <span className="text-muted-foreground/70 font-semibold">Concluído</span>
+                                ) : (
+                                  <span className={`font-semibold ${days >= 90 ? "text-red-400 animate-pulse" : days >= 60 ? "text-orange-400" : days >= 30 ? "text-amber-400" : "text-muted-foreground"}`}>
+                                    {days} dias
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          </TableCell>
+
                           <TableCell>{getStatusBadge(vehicle.status)}</TableCell>
+                          
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1.5">
                               <Button

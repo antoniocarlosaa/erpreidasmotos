@@ -73,10 +73,107 @@ import {
   GitCommit,
   ArrowRight,
   Sparkles,
+  Copy,
+  ClipboardList,
 } from "lucide-react";
 import { formatCPF } from "@/utils/validators";
 import { formatCurrency, formatDate, formatDateTime, formatMileage } from "@/utils/formatters";
 import { CONTRACT_STATUS_DETAILS, getModalityLabel } from "./contracts-client";
+
+const getStateName = (uf: string) => {
+  const states: Record<string, string> = {
+    AC: "ACRE", AL: "ALAGOAS", AP: "AMAPÁ", AM: "AMAZONAS", BA: "BAHIA", CE: "CEARÁ",
+    DF: "DISTRITO FEDERAL", ES: "ESPÍRITO SANTO", GO: "GOIÁS", MA: "MARANHÃO",
+    MT: "MATO GROSSO", MS: "MATO GROSSO DO SUL", MG: "MINAS GERAIS", PA: "PARÁ",
+    PB: "PARAÍBA", PR: "PARANÁ", PE: "PERNAMBUCO", PI: "PIAUÍ", RJ: "RIO DE JANEIRO",
+    RN: "RIO GRANDE DO NORTE", RS: "RIO GRANDE DO SUL", RO: "RONDÔNIA", RR: "RORAIMA",
+    SC: "SANTA CATARINA", SP: "SÃO PAULO", SE: "SERGIPE", TO: "TOCANTINS"
+  };
+  return states[uf.toUpperCase()] || uf.toUpperCase();
+};
+
+const parseRG = (rg: string = "") => {
+  const cleanRg = rg.trim();
+  if (!cleanRg) {
+    return { number: "", issuer: "SSP", state: "MARANHÃO" };
+  }
+
+  const parts = cleanRg.split(/[\/\-\s]+/);
+  let number = parts[0] || "";
+  let issuer = "SSP";
+  let state = "MARANHÃO";
+
+  if (parts.length > 1) {
+    const secondPart = parts[1].toUpperCase();
+    if (["SSP", "SESP", "DETRAN", "IFP", "IPF"].some(p => secondPart.includes(p))) {
+      issuer = secondPart;
+    } else if (secondPart.length === 2) {
+      state = getStateName(secondPart);
+    } else {
+      issuer = secondPart;
+    }
+  }
+
+  if (parts.length > 2) {
+    const thirdPart = parts[2].toUpperCase();
+    if (thirdPart.length === 2) {
+      state = getStateName(thirdPart);
+    } else {
+      state = thirdPart;
+    }
+  }
+
+  return { 
+    number: number.toUpperCase(), 
+    issuer: issuer.toUpperCase(), 
+    state: state.toUpperCase() 
+  };
+};
+
+const parseAddress = (address: string = "") => {
+  if (!address) {
+    return { street: "", number: "S/N" };
+  }
+
+  const match = address.match(/^(.*?)[,\-]\s*(?:nº|no|n\.|n)?\s*(\d+|s\/n|sn)\b/i);
+  if (match) {
+    return {
+      street: match[1].trim().toUpperCase(),
+      number: match[2].trim().toUpperCase()
+    };
+  }
+
+  const fallbackMatch = address.match(/^(.*?)\s+(?:nº|no|n\.|n)?\s*(\d+|s\/n|sn)$/i);
+  if (fallbackMatch) {
+    return {
+      street: fallbackMatch[1].trim().toUpperCase(),
+      number: fallbackMatch[2].trim().toUpperCase()
+    };
+  }
+
+  return {
+    street: address.trim().toUpperCase(),
+    number: "S/N"
+  };
+};
+
+const formatCEP = (cep: string = "") => {
+  const clean = cep.replace(/\D/g, "");
+  if (clean.length === 8) {
+    return `${clean.substring(0, 5)}-${clean.substring(5, 8)}`;
+  }
+  return cep;
+};
+
+const formatDateBR = (dateStr?: string) => {
+  if (!dateStr) return "";
+  const dateOnly = dateStr.split("T")[0];
+  const parts = dateOnly.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+};
 
 interface ContractDetailClientProps {
   contract: Contract;
@@ -144,6 +241,101 @@ export function ContractDetailClient({
   const [selectedRevision, setSelectedRevision] = useState<any | null>(null);
   const [revKmInput, setRevKmInput] = useState<number>(0);
   const [isRevModalOpen, setIsRevModalOpen] = useState(false);
+
+  // Transferência Online Modal state
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [copiedTransferText, setCopiedTransferText] = useState(false);
+
+  const generateTransferText = () => {
+    if (!contract) return "";
+
+    const vehicleBrandModel = `${contract.vehicle?.brand || ""} ${contract.vehicle?.model || ""}`.trim().toUpperCase();
+    const vehiclePlate = (contract.vehicle?.plate || "").toUpperCase();
+    const vehicleRenavam = contract.vehicle?.renavam || "";
+    
+    const vehicleVal = contract.total_value || 0;
+    const formattedVal = new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0
+    }).format(vehicleVal);
+
+    const isAlienated = contract.modality === "financiada"
+      ? "SIM, MOTO FOI ALIENADA"
+      : "NÃO";
+
+    const client = contract.client;
+    const clientCpf = client ? formatCPF(client.cpf) : "";
+    const clientName = (client?.name || "").trim().toUpperCase();
+
+    const parsedRgData = parseRG(client?.rg);
+    const clientRgNumber = parsedRgData.number;
+    const clientRgIssuer = parsedRgData.issuer;
+    const clientRgState = parsedRgData.state;
+
+    const clientBirthDate = client?.birth_date ? formatDateBR(client.birth_date) : "";
+
+    const parsedAddressData = parseAddress(client?.address);
+    const clientStreet = parsedAddressData.street;
+    const clientNumber = parsedAddressData.number;
+    const clientZipCode = client ? formatCEP(client.zip_code) : "";
+    const clientCity = (client?.city || "").trim().toUpperCase();
+    const clientNeighborhood = (client?.neighborhood || "").trim().toUpperCase();
+
+    const clientEmail = (client?.email || "").trim().toUpperCase();
+    const clientPhone = (client?.phone || "").trim().toUpperCase();
+
+    return `DADOS PARA TRANSFERENCIA ONLINE 
+
+
+VEICULO: ${vehicleBrandModel}
+PLACA: ${vehiclePlate}
+
+ RENAVAM: ${vehicleRenavam} 
+
+VALOR DO VEÍCULO: ${formattedVal}
+
+MOTO ALIENADA: ${isAlienated}
+
+-------------------------------------------------
+DADOS DO NOVO COMPRADOR 
+
+CPF: ${clientCpf}
+
+NOME: ${clientName}
+
+RG: ${clientRgNumber}
+
+ORGAO EMISSOR: ${clientRgIssuer}
+ESTADO: ${clientRgState}
+
+DATA DE NASCIMENTO: ${clientBirthDate}
+
+-----------------------------------------------
+ENDEREÇO DO COMPRADOR OU LOGRADOURO
+
+CEP: ${clientZipCode}
+
+CIDADE: ${clientCity}
+
+${clientStreet}
+
+N ${clientNumber}
+
+BAIRRO: ${clientNeighborhood}
+--------------------------------------------
+
+EMAIL: ${clientEmail}
+
+TELEFONE: ${clientPhone}`;
+  };
+
+  const handleCopyTransferText = () => {
+    const text = generateTransferText();
+    navigator.clipboard.writeText(text);
+    setCopiedTransferText(true);
+    setTimeout(() => setCopiedTransferText(false), 2000);
+  };
 
   // Queries
   const { data: payments = [] } = useQuery({
@@ -544,6 +736,15 @@ export function ContractDetailClient({
           >
             {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
             Exportar PDF
+          </Button>
+
+          <Button
+            variant="outline"
+            className="gap-2 text-xs h-9 bg-card/60 border-primary/20 text-primary hover:bg-primary/10"
+            onClick={() => setIsTransferModalOpen(true)}
+          >
+            <ClipboardList size={14} />
+            Transferência Online
           </Button>
 
           {!sellerSignature && (userProfile.role === "admin" || userProfile.role === "vendedor") && (
@@ -1733,6 +1934,39 @@ export function ContractDetailClient({
             >
               {paymentMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {selectedPayment?.is_refund ? "Confirmar Volta Paga" : "Confirmar Pagamento"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transferência Online Plain Text Dialog */}
+      <Dialog open={isTransferModalOpen} onOpenChange={setIsTransferModalOpen}>
+        <DialogContent className="max-w-xl bg-zinc-950 border border-border/40 text-foreground">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <ClipboardList className="text-primary" /> Dados para Transferência Online
+            </DialogTitle>
+            <DialogDescription>
+              Copie o texto limpo formatado abaixo para dar entrada na transferência online ou enviar para o comprador.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="my-4">
+            <pre className="whitespace-pre-wrap font-mono p-4 bg-black/50 rounded border border-border/40 text-[11px] max-h-[350px] overflow-y-auto select-text text-foreground/90 leading-relaxed">
+              {generateTransferText()}
+            </pre>
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setIsTransferModalOpen(false)}>
+              Fechar
+            </Button>
+            <Button
+              className="bg-primary hover:bg-primary/95 text-foreground font-semibold size-sm gap-1.5"
+              onClick={handleCopyTransferText}
+            >
+              {copiedTransferText ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+              {copiedTransferText ? "Texto Copiado!" : "Copiar Texto"}
             </Button>
           </DialogFooter>
         </DialogContent>
