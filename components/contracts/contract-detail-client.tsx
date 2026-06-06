@@ -504,6 +504,14 @@ export function ContractDetailClient({
               <span className="text-xs text-muted-foreground font-mono">
                 Emitido em {formatDate(contract.created_at)}
               </span>
+              {contract.seller?.name && (
+                <>
+                  <span className="text-muted-foreground text-xs">ÔÇó</span>
+                  <span className="text-xs text-muted-foreground">
+                    Vendedor: <span className="font-semibold text-foreground">{contract.seller.name}</span>
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/actions/authActions";
 import { getCompanyDetails, getCompanyEmployees, getCompanyAuditLogs } from "@/actions/settingsActions";
+import { getCompanySessions } from "@/actions/sessionActions";
 import { SidebarLayout } from "@/components/sidebar-layout";
 import { SettingsClient } from "@/components/settings/settings-client";
 
@@ -22,11 +23,13 @@ export default async function SettingsPage() {
   let company = null;
   let employees: any[] = [];
   let auditLogs: any[] = [];
+  let sessions: any[] = [];
 
   try {
     company = await getCompanyDetails();
     employees = await getCompanyEmployees();
     auditLogs = await getCompanyAuditLogs();
+    sessions = await getCompanySessions();
   } catch (error) {
     console.error("Failed to load settings dependency data:", error);
   }
@@ -44,7 +47,7 @@ export default async function SettingsPage() {
 
   return (
     <SidebarLayout userProfile={userProfile}>
-      <SettingsClient company={company} initialEmployees={employees} initialAuditLogs={auditLogs} />
+      <SettingsClient company={company} initialEmployees={employees} initialAuditLogs={auditLogs} initialSessions={sessions} />
     </SidebarLayout>
   );
 }

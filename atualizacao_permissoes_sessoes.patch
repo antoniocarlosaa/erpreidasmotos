@@ -1,0 +1,1572 @@
+diff --git a/actions/sessionActions.ts b/actions/sessionActions.ts
+new file mode 100644
+index 0000000..b1d7b3d
+--- /dev/null
++++ b/actions/sessionActions.ts
+@@ -0,0 +1,163 @@
++"use server";
++
++import { db } from "@/lib/firebase/admin";
++import { getCurrentUser } from "./authActions";
++import { headers } from "next/headers";
++import { auditService } from "@/services/auditService";
++
++function getDeviceType(userAgent: string): string {
++  const ua = userAgent.toLowerCase();
++  if (/mobile|android|iphone|ipad|phone/i.test(ua)) {
++    return "Celular";
++  }
++  return "Computador";
++}
++
++export async function registerSession(sessionId?: string) {
++  const user = await getCurrentUser();
++  if (!user || !user.company_id) return { success: false, error: "N├úo autorizado." };
++
++  const now = new Date();
++  const nowStr = now.toISOString();
++
++  let ipAddress = "127.0.0.1";
++  let userAgent = "unknown";
++
++  try {
++    const headerList = await headers();
++    userAgent = headerList.get("user-agent") || "unknown";
++    ipAddress =
++      headerList.get("x-forwarded-for")?.split(",")[0].trim() ||
++      headerList.get("x-real-ip") ||
++      "127.0.0.1";
++  } catch (e) {
++    console.warn("Could not retrieve headers for session registration:", e);
++  }
++
++  const deviceType = getDeviceType(userAgent);
++
++  if (sessionId) {
++    try {
++      const sessDoc = await db.collection("sessions").doc(sessionId).get();
++      if (sessDoc.exists) {
++        const sessData = sessDoc.data();
++        if (sessData) {
++          const lastActive = new Date(sessData.last_active_at);
++          const diffMin = (now.getTime() - lastActive.getTime()) / (1000 * 60);
++
++          if (diffMin < 30 && sessData.status === "ativo") {
++            await db.collection("sessions").doc(sessionId).update({
++              last_active_at: nowStr,
++            });
++            return { success: true, sessionId };
++          }
++        }
++      }
++    } catch (err) {
++      console.error("Erro ao atualizar sess├úo existente:", err);
++    }
++  }
++
++  // Criar nova sess├úo
++  const newId = crypto.randomUUID();
++  try {
++    await db.collection("sessions").doc(newId).set({
++      company_id: user.company_id,
++      user_id: user.id,
++      login_at: nowStr,
++      last_active_at: nowStr,
++      ip_address: ipAddress,
++      user_agent: userAgent,
++      device_type: deviceType,
++      status: "ativo",
++    });
++
++    // Gravar log de login na auditoria geral
++    await auditService.logAction(db, {
++      user_id: user.id,
++      company_id: user.company_id,
++      action: "LOGIN",
++      details: {
++        session_id: newId,
++        device_type: deviceType,
++        ip_address: ipAddress,
++      },
++    });
++
++    return { success: true, sessionId: newId };
++  } catch (error: any) {
++    console.error("Erro ao criar nova sess├úo:", error);
++    return { success: false, error: error.message };
++  }
++}
++
++export async function closeSession(sessionId: string) {
++  const user = await getCurrentUser();
++  if (!user) return { success: false };
++
++  try {
++    const nowStr = new Date().toISOString();
++    const sessRef = db.collection("sessions").doc(sessionId);
++    const doc = await sessRef.get();
++    if (doc.exists) {
++      await sessRef.update({
++        status: "desconectado",
++        last_active_at: nowStr,
++      });
++
++      // Gravar log de logout
++      await auditService.logAction(db, {
++        user_id: user.id,
++        company_id: user.company_id,
++        action: "LOGOUT",
++        details: {
++          session_id: sessionId,
++        },
++      });
++    }
++    return { success: true };
++  } catch (error) {
++    console.error("Erro ao fechar sess├úo:", error);
++    return { success: false };
++  }
++}
++
++export async function getCompanySessions(limit = 100) {
++  const user = await getCurrentUser();
++  if (!user || !user.company_id || user.role !== "admin") {
++    throw new Error("N├úo autorizado.");
++  }
++
++  try {
++    const snap = await db.collection("sessions")
++      .where("company_id", "==", user.company_id)
++      .get();
++
++    const sessions = await Promise.all(
++      snap.docs.map(async (doc) => {
++        const data = doc.data();
++        let userProfile = undefined;
++        if (data.user_id) {
++          const uDoc = await db.collection("users").doc(data.user_id).get().catch(() => null);
++          if (uDoc && uDoc.exists) {
++            userProfile = { id: uDoc.id, ...uDoc.data() } as any;
++          }
++        }
++
++        return {
++          id: doc.id,
++          ...data,
++          user: userProfile,
++        };
++      })
++    );
++
++    // Ordenar por login desc
++    sessions.sort((a: any, b: any) => new Date(b.login_at).getTime() - new Date(a.login_at).getTime());
++
++    return sessions.slice(0, limit);
++  } catch (error) {
++    console.error("Erro ao obter sess├Áes:", error);
++    return [];
++  }
++}
+diff --git a/actions/settingsActions.ts b/actions/settingsActions.ts
+index 53043dd..c630507 100644
+--- a/actions/settingsActions.ts
++++ b/actions/settingsActions.ts
+@@ -115,6 +115,50 @@ export async function deleteEmployee(employeeId: string) {
+   }
+ }
+ 
++export async function updateEmployee(
++  employeeId: string,
++  data: {
++    name: string;
++    role: UserRole;
++  }
++) {
++  const user = await getCurrentUser();
++  if (!user || !user.company_id || user.role !== "admin") {
++    throw new Error("N├úo autorizado.");
++  }
++
++  if (employeeId === user.id && data.role !== "admin") {
++    return { success: false, error: "Voc├¬ n├úo pode remover seu pr├│prio acesso de Administrador." };
++  }
++
++  try {
++    const nowStr = new Date().toISOString();
++    await db.collection("users").doc(employeeId).update({
++      name: data.name,
++      role: data.role,
++      updated_at: nowStr,
++    });
++
++    // Registra auditoria da altera├º├úo de cargo/dados do colaborador
++    await auditService.logAction(db, {
++      user_id: user.id,
++      company_id: user.company_id,
++      action: "UPDATE_EMPLOYEE",
++      details: {
++        employee_id: employeeId,
++        updated_name: data.name,
++        updated_role: data.role,
++      },
++    });
++
++    revalidatePath("/settings");
++    return { success: true };
++  } catch (error: any) {
++    console.error("Erro ao atualizar funcion├írio:", error);
++    return { success: false, error: error.message };
++  }
++}
++
+ export async function getCompanyAuditLogs(limit = 100) {
+   const user = await getCurrentUser();
+   if (!user || !user.company_id || user.role !== "admin") {
+diff --git a/app/settings/page.tsx b/app/settings/page.tsx
+index e662193..83d2865 100644
+--- a/app/settings/page.tsx
++++ b/app/settings/page.tsx
+@@ -2,6 +2,7 @@ import React from "react";
+ import { redirect } from "next/navigation";
+ import { getCurrentUser } from "@/actions/authActions";
+ import { getCompanyDetails, getCompanyEmployees, getCompanyAuditLogs } from "@/actions/settingsActions";
++import { getCompanySessions } from "@/actions/sessionActions";
+ import { SidebarLayout } from "@/components/sidebar-layout";
+ import { SettingsClient } from "@/components/settings/settings-client";
+ 
+@@ -22,11 +23,13 @@ export default async function SettingsPage() {
+   let company = null;
+   let employees: any[] = [];
+   let auditLogs: any[] = [];
++  let sessions: any[] = [];
+ 
+   try {
+     company = await getCompanyDetails();
+     employees = await getCompanyEmployees();
+     auditLogs = await getCompanyAuditLogs();
++    sessions = await getCompanySessions();
+   } catch (error) {
+     console.error("Failed to load settings dependency data:", error);
+   }
+@@ -44,7 +47,7 @@ export default async function SettingsPage() {
+ 
+   return (
+     <SidebarLayout userProfile={userProfile}>
+-      <SettingsClient company={company} initialEmployees={employees} initialAuditLogs={auditLogs} />
++      <SettingsClient company={company} initialEmployees={employees} initialAuditLogs={auditLogs} initialSessions={sessions} />
+     </SidebarLayout>
+   );
+ }
+diff --git a/app/transfer/page.tsx b/app/transfer/page.tsx
+index b701524..b8f7ada 100644
+--- a/app/transfer/page.tsx
++++ b/app/transfer/page.tsx
+@@ -17,16 +17,12 @@ export default async function TransferPage() {
+ 
+   // Pre-load transfer processes and contracts on the server
+   let initialProcesses: any[] = [];
+-  let signPendingContracts: any[] = [];
++  let initialContracts: any[] = [];
+ 
+   try {
+     initialProcesses = await getTransferProcesses();
+-    const allContracts = await getContracts({ limit: 100 });
+-    signPendingContracts = (allContracts.data || []).filter(
+-      (c) =>
+-        c.status === "AGUARDANDO_VENDEDOR_DAR_ENTRADA" ||
+-        c.status === "FALTA_PAGAMENTO_DE_ENTRADA"
+-    );
++    const allContracts = await getContracts({ limit: 500 });
++    initialContracts = allContracts.data || [];
+   } catch (error) {
+     console.error("Failed to load transfer page data on server:", error);
+   }
+@@ -46,7 +42,7 @@ export default async function TransferPage() {
+     <SidebarLayout userProfile={userProfile}>
+       <TransferClient
+         initialProcesses={initialProcesses}
+-        signPendingContracts={signPendingContracts}
++        signPendingContracts={initialContracts}
+         userRole={profile.role}
+       />
+     </SidebarLayout>
+diff --git a/components/contracts/contract-detail-client.tsx b/components/contracts/contract-detail-client.tsx
+index 009bc4e..4ce7276 100644
+--- a/components/contracts/contract-detail-client.tsx
++++ b/components/contracts/contract-detail-client.tsx
+@@ -504,6 +504,14 @@ export function ContractDetailClient({
+               <span className="text-xs text-muted-foreground font-mono">
+                 Emitido em {formatDate(contract.created_at)}
+               </span>
++              {contract.seller?.name && (
++                <>
++                  <span className="text-muted-foreground text-xs">ÔÇó</span>
++                  <span className="text-xs text-muted-foreground">
++                    Vendedor: <span className="font-semibold text-foreground">{contract.seller.name}</span>
++                  </span>
++                </>
++              )}
+             </div>
+           </div>
+         </div>
+diff --git a/components/contracts/contracts-client.tsx b/components/contracts/contracts-client.tsx
+index 2d32af3..49bb8a1 100644
+--- a/components/contracts/contracts-client.tsx
++++ b/components/contracts/contracts-client.tsx
+@@ -398,6 +398,11 @@ export function ContractsClient({ initialContracts, userRole }: ContractsClientP
+                         <p className="text-xs text-muted-foreground font-mono">
+                           {contract.client ? formatCPF(contract.client.cpf) : ""}
+                         </p>
++                        {contract.seller?.name && (
++                          <span className="block text-[10px] font-sans font-normal text-muted-foreground mt-0.5" title="Vendedor respons├ível">
++                            Vend: {contract.seller.name}
++                          </span>
++                        )}
+                       </div>
+                     </TableCell>
+                     <TableCell>
+diff --git a/components/settings/settings-client.tsx b/components/settings/settings-client.tsx
+index 20aca94..e58eab1 100644
+--- a/components/settings/settings-client.tsx
++++ b/components/settings/settings-client.tsx
+@@ -4,7 +4,7 @@ import React, { useState, useRef } from "react";
+ import { useRouter } from "next/navigation";
+ import SignatureCanvas from "react-signature-canvas";
+ import { useMutation, useQueryClient } from "@tanstack/react-query";
+-import { updateCompanyDetails, createEmployee, deleteEmployee, resetCompanyData, clearAuditLogs } from "@/actions/settingsActions";
++import { updateCompanyDetails, createEmployee, deleteEmployee, updateEmployee, resetCompanyData, clearAuditLogs } from "@/actions/settingsActions";
+ import { UserRole, AuditLog } from "@/types";
+ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+ import { Button } from "@/components/ui/button";
+@@ -40,6 +40,7 @@ import {
+   Users,
+   UserPlus,
+   Trash2,
++  Edit2,
+   Save,
+   Loader2,
+   ShieldCheck,
+@@ -48,12 +49,19 @@ import {
+   MapPin,
+   FileText,
+   AlertTriangle,
++  Clock,
+ } from "lucide-react";
+ import { formatDate } from "@/utils/formatters";
+ 
+ const renderActionDescription = (log: any) => {
+   const details = log.details || {};
+   switch (log.action) {
++    case "LOGIN":
++      return `Efetuou login no sistema (${details.device_type || "N/A"})`;
++    case "LOGOUT":
++      return `Efetuou logout do sistema`;
++    case "UPDATE_EMPLOYEE":
++      return `Alterou cargo/dados do colaborador: ${details.updated_name || "N/A"} (Cargo: ${details.updated_role || "N/A"})`;
+     case "CREATE_CLIENT":
+       return `Cadastrou o cliente: ${details.client_name || details.name || "N/A"}`;
+     case "UPDATE_CLIENT":
+@@ -98,6 +106,27 @@ const renderActionDescription = (log: any) => {
+   }
+ };
+ 
++const formatSessionDuration = (loginAt: string, lastActiveAt: string) => {
++  try {
++    const start = new Date(loginAt).getTime();
++    const end = new Date(lastActiveAt).getTime();
++    const diffMs = end - start;
++    if (diffMs <= 0) return "Menos de 1 min";
++    
++    const diffSecs = Math.floor(diffMs / 1000);
++    const diffMins = Math.floor(diffSecs / 60);
++    const diffHours = Math.floor(diffMins / 60);
++
++    if (diffHours > 0) {
++      const minsRemaining = diffMins % 60;
++      return `${diffHours}h ${minsRemaining}m`;
++    }
++    return `${diffMins} min`;
++  } catch (e) {
++    return "N/A";
++  }
++};
++
+ interface SettingsClientProps {
+   company: {
+     id: string;
+@@ -110,9 +139,10 @@ interface SettingsClientProps {
+   } | null;
+   initialEmployees: any[];
+   initialAuditLogs: any[];
++  initialSessions: any[];
+ }
+ 
+-export function SettingsClient({ company, initialEmployees, initialAuditLogs }: SettingsClientProps) {
++export function SettingsClient({ company, initialEmployees, initialAuditLogs, initialSessions }: SettingsClientProps) {
+   const router = useRouter();
+   const queryClient = useQueryClient();
+   const [activeTab, setActiveTab] = useState("company");
+@@ -134,6 +164,9 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+   const [newEmpPassword, setNewEmpPassword] = useState("");
+   const [newEmpRole, setNewEmpRole] = useState<UserRole>("vendedor");
+ 
++  // Session states
++  const [sessions, setSessions] = useState<any[]>(initialSessions);
++
+   // Loading / Error states
+   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
+   const [isCreatingEmployee, setIsCreatingEmployee] = useState(false);
+@@ -289,6 +322,49 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+     }
+   };
+ 
++  // Edit employee states
++  const [isEditOpen, setIsEditOpen] = useState(false);
++  const [editEmpId, setEditEmpId] = useState("");
++  const [editEmpName, setEditEmpName] = useState("");
++  const [editEmpRole, setEditEmpRole] = useState<UserRole>("vendedor");
++  const [isUpdatingEmployee, setIsUpdatingEmployee] = useState(false);
++
++  const handleOpenEdit = (emp: any) => {
++    setEditEmpId(emp.id);
++    setEditEmpName(emp.name);
++    setEditEmpRole(emp.role);
++    setIsEditOpen(true);
++  };
++
++  const handleUpdateEmployee = async (e: React.FormEvent) => {
++    e.preventDefault();
++    if (!editEmpName) {
++      alert("Preencha o nome do funcion├írio.");
++      return;
++    }
++
++    setIsUpdatingEmployee(true);
++    try {
++      const res = await updateEmployee(editEmpId, {
++        name: editEmpName,
++        role: editEmpRole,
++      });
++
++      if (res.success) {
++        alert("Funcion├írio atualizado com sucesso!");
++        setIsEditOpen(false);
++        setEmployees(employees.map(e => e.id === editEmpId ? { ...e, name: editEmpName, role: editEmpRole } : e));
++        router.refresh();
++      } else {
++        alert(`Falha ao atualizar: ${res.error}`);
++      }
++    } catch (err: any) {
++      alert(`Erro ao atualizar: ${err.message}`);
++    } finally {
++      setIsUpdatingEmployee(false);
++    }
++  };
++
+   return (
+     <div className="space-y-6">
+       <div>
+@@ -301,7 +377,7 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+       </div>
+ 
+       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+-        <TabsList className="grid grid-cols-1 sm:grid-cols-3 w-full max-w-lg bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
++        <TabsList className="grid grid-cols-1 sm:grid-cols-4 w-full max-w-2xl bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
+           <TabsTrigger value="company" className="rounded-md font-semibold text-xs gap-1.5">
+             <Building2 size={14} /> Dados da Loja
+           </TabsTrigger>
+@@ -311,6 +387,9 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+           <TabsTrigger value="auditoria" className="rounded-md font-semibold text-xs gap-1.5">
+             <ShieldCheck size={14} /> Auditoria e Logs
+           </TabsTrigger>
++          <TabsTrigger value="sessoes" className="rounded-md font-semibold text-xs gap-1.5">
++            <Clock size={14} /> Hist├│rico de Acessos
++          </TabsTrigger>
+         </TabsList>
+ 
+         {/* DADOS DA EMPRESA */}
+@@ -506,20 +585,31 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+                             </Badge>
+                           </TableCell>
+                           <TableCell className="text-right">
+-                            <Button
+-                              variant="ghost"
+-                              size="icon"
+-                              onClick={() => handleDeleteEmployee(emp.id, emp.name)}
+-                              disabled={deletingId === emp.id}
+-                              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+-                              title="Remover Acesso"
+-                            >
+-                              {deletingId === emp.id ? (
+-                                <Loader2 size={14} className="animate-spin" />
+-                              ) : (
+-                                <Trash2 size={14} />
+-                              )}
+-                            </Button>
++                            <div className="flex justify-end gap-1.5">
++                              <Button
++                                variant="ghost"
++                                size="icon"
++                                onClick={() => handleOpenEdit(emp)}
++                                className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
++                                title="Editar Cargo / Dados"
++                              >
++                                <Edit2 size={14} />
++                              </Button>
++                              <Button
++                                variant="ghost"
++                                size="icon"
++                                onClick={() => handleDeleteEmployee(emp.id, emp.name)}
++                                disabled={deletingId === emp.id}
++                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
++                                title="Remover Acesso"
++                              >
++                                {deletingId === emp.id ? (
++                                  <Loader2 size={14} className="animate-spin" />
++                                ) : (
++                                  <Trash2 size={14} />
++                                )}
++                              </Button>
++                            </div>
+                           </TableCell>
+                         </TableRow>
+                       ))}
+@@ -723,6 +813,85 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+           </Card>
+         </TabsContent>
+ 
++        {/* HIST├ôRICO DE ACESSOS */}
++        <TabsContent value="sessoes" className="mt-4">
++          <Card className="glass-card border-white/5">
++            <CardHeader className="pb-3 border-b border-border/40">
++              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
++                <Clock size={16} /> Hist├│rico de Acessos e Sess├Áes
++              </CardTitle>
++              <CardDescription>
++                Acompanhe quem acessou o sistema, por qual dispositivo, IP e tempo de perman├¬ncia ativa.
++              </CardDescription>
++            </CardHeader>
++            <CardContent className="p-0">
++              <div className="max-h-[500px] overflow-y-auto">
++                <Table className="text-xs">
++                  <TableHeader>
++                    <TableRow className="hover:bg-transparent border-border/40">
++                      <TableHead className="font-semibold">Colaborador</TableHead>
++                      <TableHead className="font-semibold">Dispositivo</TableHead>
++                      <TableHead className="font-semibold">Endere├ºo IP</TableHead>
++                      <TableHead className="font-semibold">Hor├írio de Entrada</TableHead>
++                      <TableHead className="font-semibold">├Ültima Atividade</TableHead>
++                      <TableHead className="font-semibold">Tempo Online</TableHead>
++                      <TableHead className="font-semibold">Status</TableHead>
++                    </TableRow>
++                  </TableHeader>
++                  <TableBody>
++                    {sessions.length === 0 ? (
++                      <TableRow>
++                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
++                          Nenhum registro de acesso encontrado.
++                        </TableCell>
++                      </TableRow>
++                    ) : (
++                      sessions.map((sess: any) => (
++                        <TableRow key={sess.id} className="border-b border-border/40 hover:bg-secondary/10">
++                          <TableCell className="font-bold text-foreground">
++                            {sess.user?.name || "Desconhecido"}
++                            <span className="block text-[10px] text-muted-foreground font-mono font-normal">
++                              {sess.user?.email || "-"}
++                            </span>
++                          </TableCell>
++                          <TableCell>
++                            <Badge variant="outline" className="text-[10px] font-semibold bg-zinc-800/40 border-zinc-700/50">
++                              {sess.device_type || "N/A"}
++                            </Badge>
++                          </TableCell>
++                          <TableCell className="font-mono text-muted-foreground">
++                            {sess.ip_address}
++                          </TableCell>
++                          <TableCell className="font-mono text-muted-foreground">
++                            {formatDate(sess.login_at)} {sess.login_at.split("T")[1]?.substring(0, 5)}
++                          </TableCell>
++                          <TableCell className="font-mono text-muted-foreground">
++                            {formatDate(sess.last_active_at)} {sess.last_active_at.split("T")[1]?.substring(0, 5)}
++                          </TableCell>
++                          <TableCell className="font-bold text-foreground font-mono">
++                            {formatSessionDuration(sess.login_at, sess.last_active_at)}
++                          </TableCell>
++                          <TableCell>
++                            {sess.status === "ativo" ? (
++                              <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold animate-pulse">
++                                Online / Ativo
++                              </Badge>
++                            ) : (
++                              <Badge variant="outline" className="text-[10px] font-semibold text-muted-foreground border-zinc-800 bg-zinc-900/30">
++                                Ausente
++                              </Badge>
++                            )}
++                          </TableCell>
++                        </TableRow>
++                      ))
++                    )}
++                  </TableBody>
++                </Table>
++              </div>
++            </CardContent>
++          </Card>
++        </TabsContent>
++
+       </Tabs>
+ 
+       {/* Reset Confirmation Dialog */}
+@@ -770,6 +939,62 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }:
+           </div>
+         </DialogContent>
+       </Dialog>
++
++      {/* Edit Employee Dialog */}
++      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
++        <DialogContent className="max-w-md bg-zinc-950 border-border/40 text-foreground text-xs">
++          <DialogHeader>
++            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-primary">
++              <Edit2 size={20} /> Editar Colaborador
++            </DialogTitle>
++            <DialogDescription className="text-sm text-muted-foreground">
++              Altere o nome ou o perfil de acesso (cargo) do colaborador selecionado.
++            </DialogDescription>
++          </DialogHeader>
++
++          <form onSubmit={handleUpdateEmployee} className="space-y-4 pt-2">
++            <div className="space-y-1.5">
++              <Label htmlFor="edit-emp-name">Nome Completo *</Label>
++              <Input
++                id="edit-emp-name"
++                placeholder="Nome do funcion├írio"
++                value={editEmpName}
++                onChange={(e) => setEditEmpName(e.target.value)}
++                className="bg-black/30 h-10"
++                required
++              />
++            </div>
++
++            <div className="space-y-1.5">
++              <Label htmlFor="edit-emp-role">Cargo / Perfil de Acesso *</Label>
++              <Select
++                value={editEmpRole}
++                onValueChange={(val) => setEditEmpRole(val as UserRole)}
++              >
++                <SelectTrigger className="bg-black/30 h-10">
++                  <SelectValue placeholder="Selecione o Cargo" />
++                </SelectTrigger>
++                <SelectContent className="bg-zinc-950 text-foreground border border-border/40 text-xs">
++                  <SelectItem value="vendedor">Vendedor (Cadastro Vendas/Invent├írio)</SelectItem>
++                  <SelectItem value="operacional">Operador P├│s-Venda (Kanban/Transfer├¬ncia)</SelectItem>
++                  <SelectItem value="financeiro">Financeiro (Baixas/Fluxo de Parcelas)</SelectItem>
++                  <SelectItem value="admin">Administrador (Acesso total + Configura├º├Áes)</SelectItem>
++                </SelectContent>
++              </Select>
++            </div>
++
++            <DialogFooter className="pt-4 border-t border-border/30 gap-2">
++              <Button type="button" variant="ghost" onClick={() => setIsEditOpen(false)} className="h-9 text-xs">
++                Cancelar
++              </Button>
++              <Button type="submit" disabled={isUpdatingEmployee} className="h-9 text-xs font-semibold">
++                {isUpdatingEmployee && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
++                Salvar Altera├º├Áes
++              </Button>
++            </DialogFooter>
++          </form>
++        </DialogContent>
++      </Dialog>
+     </div>
+   );
+ }
+diff --git a/components/sidebar-layout.tsx b/components/sidebar-layout.tsx
+index 5701cce..79d895a 100644
+--- a/components/sidebar-layout.tsx
++++ b/components/sidebar-layout.tsx
+@@ -4,6 +4,7 @@ import React, { useState } from "react";
+ import Link from "next/link";
+ import { usePathname, useRouter } from "next/navigation";
+ import { logout } from "@/actions/authActions";
++import { registerSession, closeSession } from "@/actions/sessionActions";
+ import {
+   LayoutDashboard,
+   Users,
+@@ -18,6 +19,8 @@ import {
+   User as UserIcon,
+   ShoppingCart,
+   Settings,
++  Wrench,
++  Archive,
+ } from "lucide-react";
+ import { Button } from "@/components/ui/button";
+ 
+@@ -38,6 +41,30 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+   const router = useRouter();
+   const [isOpen, setIsOpen] = useState(false);
+ 
++  React.useEffect(() => {
++    const performPing = async () => {
++      try {
++        const storedSessId = sessionStorage.getItem("erp_session_id") || undefined;
++        const res = await registerSession(storedSessId);
++        if (res.success && res.sessionId) {
++          sessionStorage.setItem("erp_session_id", res.sessionId);
++        }
++      } catch (err) {
++        console.error("Erro ao registrar atividade da sessão:", err);
++      }
++    };
++
++    // Primeiro ping imediato
++    performPing();
++
++    // Ping subsequente a cada 60 segundos
++    const intervalId = setInterval(performPing, 60000);
++
++    return () => {
++      clearInterval(intervalId);
++    };
++  }, []);
++
+   const roleLabels: Record<string, string> = {
+     admin: "Administrador",
+     vendedor: "Vendedor",
+@@ -90,7 +117,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+       name: "Pós-Venda (CRM)",
+       href: "/transfer",
+       icon: FileCheck,
+-      roles: ["admin", "operacional"],
++      roles: ["admin", "operacional", "vendedor"],
+       colorClass: "bg-rose-500/10 border-rose-500/20 text-rose-400",
+       iconColor: "text-rose-400",
+     },
+@@ -102,6 +129,30 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+       colorClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+       iconColor: "text-amber-400",
+     },
++    {
++      header: "OFICINA E ALMOXARIFADO",
++      roles: ["admin", "operacional", "financeiro"],
++    },
++    {
++      name: "Painel Oficina (OS)",
++      href: "/workshop",
++      icon: Wrench,
++      roles: ["admin", "operacional"],
++      colorClass: "bg-blue-500/10 border-blue-500/20 text-blue-400",
++      iconColor: "text-blue-400",
++    },
++    {
++      name: "Estoque de Peças",
++      href: "/workshop/inventory",
++      icon: Archive,
++      roles: ["admin", "operacional", "financeiro"],
++      colorClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
++      iconColor: "text-amber-400",
++    },
++    {
++      header: "SISTEMA",
++      roles: ["admin"],
++    },
+     {
+       name: "Configurações",
+       href: "/settings",
+@@ -110,13 +161,25 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+       colorClass: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
+       iconColor: "text-zinc-400",
+     },
+-  ];
++  ] as Array<
++    | { name: string; href: string; icon: any; roles: string[]; colorClass: string; iconColor: string }
++    | { header: string; roles: string[] }
++  >;
+ 
+   const filteredItems = allItems.filter((item) =>
+     item.roles.includes(userProfile.role)
+   );
+ 
+   const handleLogout = async () => {
++    try {
++      const storedSessId = sessionStorage.getItem("erp_session_id");
++      if (storedSessId) {
++        await closeSession(storedSessId);
++        sessionStorage.removeItem("erp_session_id");
++      }
++    } catch (err) {
++      console.error("Erro ao fechar sessão no logout:", err);
++    }
+     const res = await logout();
+     if (res.success) {
+       router.push("/login");
+@@ -186,12 +249,22 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+         {/* Navigation Items */}
+         <nav className="flex-1 space-y-1.5 px-4 py-6 overflow-y-auto">
+           {filteredItems.map((item) => {
+-            const isActive = pathname.startsWith(item.href);
+-            const Icon = item.icon;
++            if ("header" in item) {
++              return (
++                <div key={item.header} className="pt-4 pb-1.5 px-3 border-t border-border/10 first:border-none">
++                  <p className="text-[10px] font-bold tracking-wider text-muted-foreground/60 uppercase">
++                    {item.header}
++                  </p>
++                </div>
++              );
++            }
++            const linkItem = item as { name: string; href: string; icon: any; colorClass: string; iconColor: string };
++            const isActive = pathname === linkItem.href || (linkItem.href !== "/dashboard" && pathname.startsWith(linkItem.href));
++            const Icon = linkItem.icon;
+             return (
+               <Link
+-                key={item.name}
+-                href={item.href}
++                key={linkItem.name}
++                href={linkItem.href}
+                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all group ${
+                   isActive
+                     ? "bg-zinc-800/40 text-foreground border border-zinc-800/50"
+@@ -201,12 +274,12 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+               >
+                 <div className={`p-1.5 rounded-lg border transition-all ${
+                   isActive
+-                    ? (item as any).colorClass
++                    ? linkItem.colorClass
+                     : "bg-zinc-950/40 border-zinc-900 text-muted-foreground group-hover:bg-zinc-900/40 group-hover:border-zinc-800"
+                 }`}>
+-                  <Icon size={15} className={`transition-colors ${isActive ? "" : `group-hover:${(item as any).iconColor}`}`} />
++                  <Icon size={15} className={`transition-colors ${isActive ? "" : `group-hover:${linkItem.iconColor}`}`} />
+                 </div>
+-                <span className="transition-colors">{item.name}</span>
++                <span className="transition-colors">{linkItem.name}</span>
+               </Link>
+             );
+           })}
+@@ -266,6 +339,10 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
+                 ? "Fluxo Financeiro"
+                 : pathname.startsWith("/settings")
+                 ? "Configurações do Sistema"
++                : pathname.startsWith("/workshop/inventory")
++                ? "Estoque de Peças e Acessórios"
++                : pathname.startsWith("/workshop")
++                ? "Painel de Oficina (OS)"
+                 : "Sistema ERP"}
+             </h1>
+           </div>
+diff --git a/components/transfer/transfer-client.tsx b/components/transfer/transfer-client.tsx
+index 22094b7..72a3d2c 100644
+--- a/components/transfer/transfer-client.tsx
++++ b/components/transfer/transfer-client.tsx
+@@ -25,6 +25,7 @@ import {
+   DialogHeader,
+   DialogTitle,
+ } from "@/components/ui/dialog";
++import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ import {
+   ChevronRight,
+   FolderOpen,
+@@ -64,6 +65,7 @@ interface KanbanItem {
+   forwardedTo?: string;
+   receiptUrl?: string;
+   notes?: string;
++  contract?: Contract;
+ }
+ 
+ interface Column {
+@@ -225,6 +227,76 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
+   const [atpveBase64, setAtpveBase64] = useState<string | null>(null);
+   const [isUploading, setIsUploading] = useState(false);
+ 
++  // Transfer online copy/print states
++  const [motoAlienada, setMotoAlienada] = useState("NAO");
++  const [orgaoEmissor, setOrgaoEmissor] = useState("SSP");
++  const [estadoRg, setEstadoRg] = useState("MA");
++  const [transferText, setTransferText] = useState("");
++
++  const handlePrintTransfer = () => {
++    const printWindow = window.open("", "_blank");
++    if (!printWindow) return;
++    printWindow.document.write(`
++      <html>
++        <head>
++          <title>Dados para Transferência - ${selectedItem?.title}</title>
++          <style>
++            body { font-family: monospace; white-space: pre-wrap; font-size: 14px; padding: 20px; color: #000; background: #fff; }
++            @media print {
++              body { padding: 0; }
++            }
++          </style>
++        </head>
++        <body>
++          <pre style="font-family: monospace; font-size: 14px; white-space: pre-wrap;">${transferText}</pre>
++        </body>
++      </html>
++    `);
++    printWindow.document.close();
++    printWindow.print();
++  };
++
++  useEffect(() => {
++    if (selectedItem?.contract) {
++      const c = selectedItem.contract;
++      const client = c.client;
++      const vehicle = c.vehicle;
++      const alienText = motoAlienada === "SIM"
++        ? "SIM"
++        : "NAO, MOTO  NAO FOI ALIENADA\n(ESCOLHER  A OPÇAO NAO)";
++
++      const formattedValue = formatCurrency(c.total_value).replace("R$", "").trim();
++
++      const text = ` DADOS PARA TRANSFERENCIA ONLINE \n\n\n` +
++        `VEICULO: ${(vehicle?.brand || "").toUpperCase()} ${(vehicle?.model || "").toUpperCase()}\n\n` +
++        `PLACA: ${(vehicle?.plate || "").toUpperCase()}\n` +
++        ` RENAVAM: ${vehicle?.renavam || ""}\n\n\n` +
++        `VALOR DO VEÍCULO:  R$ ${formattedValue}\n\n` +
++        `MOTO ALIENADA: ${alienText}\n\n` +
++        `---------------------------------------------------------------------------\n` +
++        `DADOS DO NOVO COMPRADOR \n\n` +
++        `CPF: ${client?.cpf || ""}\n` +
++        `NOME: ${(client?.name || "").toUpperCase()}\n\n` +
++        `RG: ${client?.rg || ""}\n\n` +
++        `ORGAO EMISSOR:  ${orgaoEmissor.toUpperCase()}\n` +
++        `ESTADO: ${estadoRg.toUpperCase()} \n\n` +
++        `DATA DE NASCIMENTO: ${client?.birth_date ? formatDate(client.birth_date) : ""}\n` +
++        `-----------------------------------------------\n\n\n` +
++        `LOGRADOURO DO COMPRADOR ( ENDEREÇO )\n\n` +
++        `CEP: ${client?.zip_code || ""}\n\n` +
++        `CIDADE: ${(client?.city || "").toUpperCase()} \n\n` +
++        `RUA ${(client?.address || "").toUpperCase()}\n\n` +
++        `CASA\n\n` +
++        `COMPLEMENTO: \n\n` +
++        `BAIRRO: ${(client?.neighborhood || "").toUpperCase()}\n` +
++        `--------------------------------------------\n\n` +
++        `EMAIL: ${(client?.email || "").toUpperCase()}\n\n` +
++        `TELEFONE: ${client?.phone || client?.whatsapp || ""}\n\n` +
++        `___________________________________________________`;
++      setTransferText(text);
++    }
++  }, [selectedItem, motoAlienada, orgaoEmissor, estadoRg]);
++
+   // Queries
+   const { data: processes = [] } = useQuery({
+     queryKey: ["transfer-processes"],
+@@ -303,6 +375,7 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
+       status: c.status,
+       plate: c.vehicle?.plate || "N/A",
+       value: c.total_value,
++      contract: c,
+     });
+   });
+ 
+@@ -323,6 +396,7 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
+         forwardedTo: p.forwarded_to,
+         receiptUrl: p.receipt_url,
+         notes: p.notes,
++        contract: p.contract,
+       });
+     }
+   });
+@@ -425,6 +499,12 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
+     setUpdateForwardedTo(item.forwardedTo || "");
+     setUpdateNotes("");
+     setAtpveBase64(null);
++
++    // Initialize transfer data states
++    setMotoAlienada("NAO");
++    setOrgaoEmissor("SSP");
++    setEstadoRg(item.contract?.client?.state || "MA");
++
+     setIsDetailOpen(true);
+   };
+ 
+@@ -624,202 +704,285 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
+                 </div>
+               </div>
+ 
+-              {/* Form de atualização */}
+-              {selectedItem.processId ? (
+-                <div className="space-y-4 bg-zinc-900/50 p-4 border border-border/40 rounded-lg">
+-                  <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
+-                    Atualizar Informações Operacionais
+-                  </h4>
+-                  
+-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+-                    <div className="space-y-1">
+-                      <Label htmlFor="update_forwarded_to">Responsável Externo (Despachante)</Label>
+-                      <Input
+-                        id="update_forwarded_to"
+-                        value={updateForwardedTo}
+-                        onChange={(e) => setUpdateForwardedTo(e.target.value)}
+-                        className="bg-black/30"
+-                      />
+-                    </div>
++              <Tabs defaultValue="acompanhamento" className="w-full">
++                <TabsList className="grid w-full grid-cols-2 bg-black/40 border border-white/5 p-1 mb-2">
++                  <TabsTrigger value="acompanhamento" className="text-xs">Acompanhamento & Trâmites</TabsTrigger>
++                  <TabsTrigger value="transferencia_online" className="text-xs">Ficha para Transferência Online</TabsTrigger>
++                </TabsList>
++
++                <TabsContent value="acompanhamento" className="space-y-6 pt-2">
++                  {/* Form de atualização */}
++                  {selectedItem.processId ? (
++                    <div className="space-y-4 bg-zinc-900/50 p-4 border border-border/40 rounded-lg">
++                      <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
++                        Atualizar Informações Operacionais
++                      </h4>
++                      
++                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
++                        <div className="space-y-1">
++                          <Label htmlFor="update_forwarded_to">Responsável Externo (Despachante)</Label>
++                          <Input
++                            id="update_forwarded_to"
++                            value={updateForwardedTo}
++                            onChange={(e) => setUpdateForwardedTo(e.target.value)}
++                            className="bg-black/30"
++                          />
++                        </div>
+ 
+-                    <div className="space-y-1">
+-                      <Label>Documento ATPV-e / Comprovante</Label>
+-                      <div className="flex gap-2">
+-                        {selectedItem.receiptUrl ? (
+-                          <a
+-                            href={selectedItem.receiptUrl}
+-                            target="_blank"
+-                            rel="noopener noreferrer"
+-                            className="inline-flex items-center gap-1 bg-primary/10 border border-primary/20 text-primary px-3 rounded hover:bg-primary/20 transition-all font-semibold shrink-0"
+-                          >
+-                            <ExternalLink size={12} /> Ver Atual
+-                          </a>
+-                        ) : (
+-                          <span className="text-[10px] text-muted-foreground flex items-center shrink-0">Nenhum enviado</span>
+-                        )}
++                        <div className="space-y-1">
++                          <Label>Documento ATPV-e / Comprovante</Label>
++                          <div className="flex gap-2">
++                            {selectedItem.receiptUrl ? (
++                              <a
++                                href={selectedItem.receiptUrl}
++                                target="_blank"
++                                rel="noopener noreferrer"
++                                className="inline-flex items-center gap-1 bg-primary/10 border border-primary/20 text-primary px-3 rounded hover:bg-primary/20 transition-all font-semibold shrink-0"
++                              >
++                                <ExternalLink size={12} /> Ver Atual
++                              </a>
++                            ) : (
++                              <span className="text-[10px] text-muted-foreground flex items-center shrink-0">Nenhum enviado</span>
++                            )}
+ 
+-                        <div className="relative flex-1">
+-                          <Button variant="outline" className="w-full text-xs gap-1.5 h-10 border-border/40 bg-black/25">
+-                            <Upload size={12} />
+-                            {atpveBase64 ? "Substituir" : "Enviar ATPV-e"}
+-                          </Button>
+-                          <input
+-                            type="file"
+-                            accept="image/*,application/pdf"
+-                            onChange={handleAtpveUpload}
+-                            className="absolute inset-0 opacity-0 cursor-pointer"
+-                          />
++                            <div className="relative flex-1">
++                              <Button variant="outline" className="w-full text-xs gap-1.5 h-10 border-border/40 bg-black/25">
++                                <Upload size={12} />
++                                {atpveBase64 ? "Substituir" : "Enviar ATPV-e"}
++                              </Button>
++                              <input
++                                type="file"
++                                accept="image/*,application/pdf"
++                                onChange={handleAtpveUpload}
++                                className="absolute inset-0 opacity-0 cursor-pointer"
++                              />
++                            </div>
++                          </div>
+                         </div>
+                       </div>
+-                    </div>
+-                  </div>
+ 
+-                  <div className="space-y-1">
+-                    <Label htmlFor="update_notes">Inserir Nova Nota Operational / Justificativa</Label>
+-                    <Textarea
+-                      id="update_notes"
+-                      placeholder="Adicione um detalhe de andamento..."
+-                      value={updateNotes}
+-                      onChange={(e: any) => setUpdateNotes(e.target.value)}
+-                      className="bg-black/30 h-16"
+-                    />
+-                  </div>
++                      <div className="space-y-1">
++                        <Label htmlFor="update_notes">Inserir Nova Nota Operational / Justificativa</Label>
++                        <Textarea
++                          id="update_notes"
++                          placeholder="Adicione um detalhe de andamento..."
++                          value={updateNotes}
++                          onChange={(e: any) => setUpdateNotes(e.target.value)}
++                          className="bg-black/30 h-16"
++                        />
++                      </div>
+ 
+-                  <div className="flex gap-2 justify-end border-t border-border/20 pt-3">
+-                    {/* Botões rápidos para avançar status direto daqui */}
+-                    {selectedItem.status === "AGUARDANDO_VENDEDOR_DAR_ENTRADA" && (
+-                      <Button
+-                        type="button"
+-                        className="text-[10px] h-8 bg-pink-600 hover:bg-pink-700 text-white font-semibold animate-in fade-in duration-200"
+-                        onClick={() => handleDetailUpdate("DADOS_ENVIADOS_PROPRIETARIO")}
+-                        disabled={updateMutation.isPending}
+-                      >
+-                        Enviar p/ Proprietário
+-                      </Button>
+-                    )}
+-                    {selectedItem.status === "DADOS_ENVIADOS_PROPRIETARIO" && (
+-                      <Button
+-                        type="button"
+-                        className="text-[10px] h-8 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold animate-in fade-in duration-200"
+-                        onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
+-                        disabled={updateMutation.isPending}
+-                      >
+-                        Iniciar Transferência
+-                      </Button>
+-                    )}
+-                    {selectedItem.status === "EM_PROCESSO_DE_TRANSFERENCIA" && (
+-                      <Button
+-                        type="button"
+-                        variant="destructive"
+-                        className="text-[10px] h-8 font-semibold"
+-                        onClick={() => handleDetailUpdate("DOCUMENTAÇÃO_PENDENTE")}
+-                        disabled={updateMutation.isPending}
+-                      >
+-                        Pendenciar Documento
+-                      </Button>
+-                    )}
+-                    {selectedItem.status === "DOCUMENTAÇÃO_PENDENTE" && (
+-                      <Button
+-                        type="button"
+-                        variant="outline"
+-                        className="text-[10px] h-8 border-border/40 font-semibold"
+-                        onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
+-                        disabled={updateMutation.isPending}
+-                      >
+-                        Resolver Pendências
+-                      </Button>
+-                    )}
+-                    {selectedItem.status !== "AGUARDANDO_DESPACHANTE" && selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
+-                      <Button
+-                        type="button"
+-                        variant="secondary"
+-                        className="text-[10px] h-8 font-semibold"
+-                        onClick={() => handleDetailUpdate("AGUARDANDO_DESPACHANTE")}
+-                        disabled={updateMutation.isPending}
+-                      >
+-                        Enviar p/ Despachante
+-                      </Button>
+-                    )}
+-                    {selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
++                      <div className="flex gap-2 justify-end border-t border-border/20 pt-3">
++                        {/* Botões rápidos para avançar status direto daqui */}
++                        {selectedItem.status === "AGUARDANDO_VENDEDOR_DAR_ENTRADA" && (
++                          <Button
++                            type="button"
++                            className="text-[10px] h-8 bg-pink-600 hover:bg-pink-700 text-white font-semibold animate-in fade-in duration-200"
++                            onClick={() => handleDetailUpdate("DADOS_ENVIADOS_PROPRIETARIO")}
++                            disabled={updateMutation.isPending}
++                          >
++                            Enviar p/ Proprietário
++                          </Button>
++                        )}
++                        {selectedItem.status === "DADOS_ENVIADOS_PROPRIETARIO" && (
++                          <Button
++                            type="button"
++                            className="text-[10px] h-8 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold animate-in fade-in duration-200"
++                            onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
++                            disabled={updateMutation.isPending}
++                          >
++                            Iniciar Transferência
++                          </Button>
++                        )}
++                        {selectedItem.status === "EM_PROCESSO_DE_TRANSFERENCIA" && (
++                          <Button
++                            type="button"
++                            variant="destructive"
++                            className="text-[10px] h-8 font-semibold"
++                            onClick={() => handleDetailUpdate("DOCUMENTAÇÃO_PENDENTE")}
++                            disabled={updateMutation.isPending}
++                          >
++                            Pendenciar Documento
++                          </Button>
++                        )}
++                        {selectedItem.status === "DOCUMENTAÇÃO_PENDENTE" && (
++                          <Button
++                            type="button"
++                            variant="outline"
++                            className="text-[10px] h-8 border-border/40 font-semibold"
++                            onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
++                            disabled={updateMutation.isPending}
++                          >
++                            Resolver Pendências
++                          </Button>
++                        )}
++                        {selectedItem.status !== "AGUARDANDO_DESPACHANTE" && selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
++                          <Button
++                            type="button"
++                            variant="secondary"
++                            className="text-[10px] h-8 font-semibold"
++                            onClick={() => handleDetailUpdate("AGUARDANDO_DESPACHANTE")}
++                            disabled={updateMutation.isPending}
++                          >
++                            Enviar p/ Despachante
++                          </Button>
++                        )}
++                        {selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
++                          <Button
++                            type="button"
++                            className="text-[10px] h-8 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
++                            onClick={() => handleDetailUpdate("TRANSFERÊNCIA_CONCLUÍDA")}
++                            disabled={updateMutation.isPending}
++                          >
++                            Finalizar Transferência
++                          </Button>
++                        )}
++                        <Button
++                          type="button"
++                          className="text-[10px] h-8 font-semibold"
++                          variant="outline"
++                          onClick={() => handleDetailUpdate()}
++                          disabled={updateMutation.isPending}
++                        >
++                          {updateMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
++                          Salvar Notas
++                        </Button>
++                      </div>
++                    </div>
++                  ) : (
++                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg flex flex-col items-center justify-center text-center gap-2 text-amber-400">
++                      <AlertCircle size={24} />
++                      <p>Este contrato ainda não tem processo de transferência iniciado.</p>
+                       <Button
+-                        type="button"
+-                        className="text-[10px] h-8 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+-                        onClick={() => handleDetailUpdate("TRANSFERÊNCIA_CONCLUÍDA")}
+-                        disabled={updateMutation.isPending}
++                        size="sm"
++                        className="mt-2 text-xs font-semibold"
++                        onClick={() => {
++                          setIsDetailOpen(false);
++                          setIsStartOpen(true);
++                        }}
+                       >
+-                        Finalizar Transferência
++                        Iniciar Operação de Transferência
+                       </Button>
+-                    )}
+-                    <Button
+-                      type="button"
+-                      className="text-[10px] h-8 font-semibold"
+-                      variant="outline"
+-                      onClick={() => handleDetailUpdate()}
+-                      disabled={updateMutation.isPending}
+-                    >
+-                      {updateMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+-                      Salvar Notas
+-                    </Button>
+-                  </div>
+-                </div>
+-              ) : (
+-                <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg flex flex-col items-center justify-center text-center gap-2 text-amber-400">
+-                  <AlertCircle size={24} />
+-                  <p>Este contrato ainda não tem processo de transferência iniciado.</p>
+-                  <Button
+-                    size="sm"
+-                    className="mt-2 text-xs font-semibold"
+-                    onClick={() => {
+-                      setIsDetailOpen(false);
+-                      setIsStartOpen(true);
+-                    }}
+-                  >
+-                    Iniciar Operação de Transferência
+-                  </Button>
+-                </div>
+-              )}
+-
+-              {/* Timeline Audit Logs */}
+-              {selectedItem.processId && (
+-                <div className="space-y-3">
+-                  <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
+-                    <History size={13} className="text-primary" /> Histórico de Movimentações (Auditoria)
+-                  </h4>
+-
+-                  {loadingLogs ? (
+-                    <div className="flex justify-center p-4">
+-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                     </div>
+-                  ) : timelineLogs.length === 0 ? (
+-                    <p className="text-muted-foreground italic text-center py-2">Nenhum log operacional registrado.</p>
+-                  ) : (
+-                    <div className="relative pl-4 border-l border-border/40 space-y-4">
+-                      {timelineLogs.map((log) => (
+-                        <div key={log.id} className="relative space-y-1">
+-                          <span className="absolute -left-[20px] top-1 h-2 w-2 rounded-full bg-primary border border-zinc-950" />
+-                          <div className="flex items-center gap-2">
+-                            <span className="font-semibold text-foreground">
+-                              {log.new_status}
+-                            </span>
+-                            {log.previous_status && (
+-                              <>
+-                                <ArrowRight size={10} className="text-muted-foreground" />
+-                                <span className="text-[10px] text-muted-foreground">
+-                                  {log.previous_status}
++                  )}
++
++                  {/* Timeline Audit Logs */}
++                  {selectedItem.processId && (
++                    <div className="space-y-3">
++                      <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
++                        <History size={13} className="text-primary" /> Histórico de Movimentações (Auditoria)
++                      </h4>
++
++                      {loadingLogs ? (
++                        <div className="flex justify-center p-4">
++                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
++                        </div>
++                      ) : timelineLogs.length === 0 ? (
++                        <p className="text-muted-foreground italic text-center py-2">Nenhum log operacional registrado.</p>
++                      ) : (
++                        <div className="relative pl-4 border-l border-border/40 space-y-4">
++                          {timelineLogs.map((log) => (
++                            <div key={log.id} className="relative space-y-1">
++                              <span className="absolute -left-[20px] top-1 h-2 w-2 rounded-full bg-primary border border-zinc-950" />
++                              <div className="flex items-center gap-2">
++                                <span className="font-semibold text-foreground">
++                                  {log.new_status}
+                                 </span>
+-                              </>
+-                            )}
+-                          </div>
+-                          <p className="text-muted-foreground leading-normal">{log.notes}</p>
+-                          <p className="text-[9px] text-muted-foreground/60 font-mono">
+-                            Modificado por {log.user?.name || "Sistema"} em {formatDate(log.created_at)} às {new Date(log.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+-                          </p>
++                                {log.previous_status && (
++                                  <>
++                                    <ArrowRight size={10} className="text-muted-foreground" />
++                                    <span className="text-[10px] text-muted-foreground">
++                                      {log.previous_status}
++                                    </span>
++                                  </>
++                                )}
++                              </div>
++                              <p className="text-muted-foreground leading-normal">{log.notes}</p>
++                              <p className="text-[9px] text-muted-foreground/60 font-mono">
++                                Modificado por {log.user?.name || "Sistema"} em {formatDate(log.created_at)} às {new Date(log.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
++                              </p>
++                            </div>
++                          ))}
+                         </div>
+-                      ))}
++                      )}
+                     </div>
+                   )}
+-                </div>
+-              )}
++                </TabsContent>
++
++                <TabsContent value="transferencia_online" className="space-y-4 pt-2">
++                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-zinc-900/40 p-4 border border-border/40 rounded-lg">
++                    <div className="space-y-1">
++                      <Label htmlFor="moto_alienada" className="text-muted-foreground">Moto Alienada?</Label>
++                      <select
++                        id="moto_alienada"
++                        value={motoAlienada}
++                        onChange={(e) => setMotoAlienada(e.target.value)}
++                        className="flex h-10 w-full rounded-md border border-border/45 bg-black/40 px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground font-semibold"
++                      >
++                        <option value="NAO" className="bg-zinc-950">Não Alienada</option>
++                        <option value="SIM" className="bg-zinc-950">Alienada (Sim)</option>
++                      </select>
++                    </div>
++
++                    <div className="space-y-1">
++                      <Label htmlFor="orgao_emissor" className="text-muted-foreground">Órgão Emissor</Label>
++                      <Input
++                        id="orgao_emissor"
++                        value={orgaoEmissor}
++                        onChange={(e) => setOrgaoEmissor(e.target.value)}
++                        className="bg-black/30 h-10 font-semibold text-foreground"
++                        placeholder="ex: SSP"
++                      />
++                    </div>
++
++                    <div className="space-y-1">
++                      <Label htmlFor="estado_rg" className="text-muted-foreground">Estado do RG</Label>
++                      <Input
++                        id="estado_rg"
++                        value={estadoRg}
++                        onChange={(e) => setEstadoRg(e.target.value)}
++                        className="bg-black/30 h-10 font-semibold text-foreground"
++                        placeholder="ex: MA"
++                      />
++                    </div>
++                  </div>
++
++                  <div className="space-y-2">
++                    <div className="flex items-center justify-between">
++                      <Label htmlFor="transfer_text" className="text-muted-foreground">Texto formatado (Editável antes de copiar)</Label>
++                      <div className="flex gap-2">
++                        <Button
++                          type="button"
++                          variant="outline"
++                          size="sm"
++                          className="h-8 text-[11px] gap-1 font-semibold border-border/40 hover:bg-primary/10 hover:text-primary transition-all"
++                          onClick={() => {
++                            navigator.clipboard.writeText(transferText);
++                            alert("Texto copiado para a área de transferência!");
++                          }}
++                        >
++                          Copiar Texto
++                        </Button>
++                        <Button
++                          type="button"
++                          variant="secondary"
++                          size="sm"
++                          className="h-8 text-[11px] gap-1 font-semibold"
++                          onClick={handlePrintTransfer}
++                        >
++                          Imprimir Ficha
++                        </Button>
++                      </div>
++                    </div>
++                    <Textarea
++                      id="transfer_text"
++                      value={transferText}
++                      onChange={(e: any) => setTransferText(e.target.value)}
++                      className="bg-black/40 border-border/40 font-mono text-[11px] leading-relaxed h-[320px] w-full resize-y custom-scrollbar text-foreground"
++                    />
++                  </div>
++                </TabsContent>
++              </Tabs>
+             </div>
+           )}
+         </DialogContent>
+diff --git a/types/index.ts b/types/index.ts
+index 2e2c39b..d7e14a5 100644
+--- a/types/index.ts
++++ b/types/index.ts
+@@ -437,3 +437,118 @@ export interface ContractReview {
+   created_at: string;
+   updated_at: string;
+ }
++
++// =========================================================================
++// MÓDULO OFICINA E ESTOQUE DE PEÇAS (MIGRAÇÃO)
++// =========================================================================
++
++export interface WorkshopProduct {
++  id: string;
++  company_id: string;
++  name: string;
++  vehicleModel: string;
++  category: string;
++  stock: number;
++  unitValue: number;
++  imageUrl?: string;
++  created_at: string;
++  updated_at: string;
++}
++
++export interface WorkshopEntry {
++  id: string;
++  company_id: string;
++  productId: string;
++  productName: string;
++  vehicleModel: string;
++  category: string;
++  quantity: number;
++  totalValue: number;
++  invoiceValue: number;
++  invoiceNumber: string;
++  buyerName: string;
++  storeName: string;
++  date: string;
++  authorUid: string;
++  created_at: string;
++}
++
++export interface WorkshopExitItem {
++  productId: string;
++  productName: string;
++  quantity: number;
++  vehicleModel: string;
++  unitValue?: number;
++}
++
++export interface WorkshopExit {
++  id: string;
++  company_id: string;
++  recipient: string;
++  destination: string;
++  date: string;
++  items: WorkshopExitItem[];
++  totalVolumes: number;
++  authorUid: string;
++  created_at: string;
++}
++
++export interface WorkshopMaintenancePartRequested {
++  id: string;
++  name: string;
++  value: number;
++}
++
++export type WorkshopMaintenanceStatus =
++  | 'Aguardando vez'
++  | 'Entrada'
++  | 'Diagnóstico'
++  | 'Aguardando peça'
++  | 'Em execução'
++  | 'Finalizada'
++  | 'Concluída'
++  | 'Entregue';
++
++export interface WorkshopMaintenance {
++  id: string;
++  company_id: string;
++  vehiclePlate: string;
++  vehicleModel: string;
++  date: string;
++  exitDate?: string;
++  takenBy?: string;
++  workshop?: string;
++  mechanicName?: string;
++  partsTaken: WorkshopExitItem[];
++  partsRequested: WorkshopMaintenancePartRequested[];
++  deliveryDate?: string;
++  observation?: string;
++  authorUid: string;
++  status: WorkshopMaintenanceStatus;
++  startDate?: string;
++  conclusionDate?: string;
++  clientName?: string;
++  clientPhone?: string;
++  vehicleYear?: string;
++  vehicleKm?: string;
++  serviceRequested?: string;
++  laborValue?: number;
++  isUrgent?: boolean;
++  exitRegistered?: boolean;
++  imageUrl?: string;
++  created_at: string;
++  updated_at: string;
++  // Relacionamentos
++  mechanic?: UserProfile;
++}
++
++export interface WorkshopAppointment {
++  id: string;
++  company_id: string;
++  time: string;
++  date: string;
++  title: string;
++  clientName?: string;
++  vehicleModel?: string;
++  created_at: string;
++}

@@ -398,6 +398,11 @@ export function ContractsClient({ initialContracts, userRole }: ContractsClientP
                         <p className="text-xs text-muted-foreground font-mono">
                           {contract.client ? formatCPF(contract.client.cpf) : ""}
                         </p>
+                        {contract.seller?.name && (
+                          <span className="block text-[10px] font-sans font-normal text-muted-foreground mt-0.5" title="Vendedor respons├ível">
+                            Vend: {contract.seller.name}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>

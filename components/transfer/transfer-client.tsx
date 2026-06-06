@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ChevronRight,
   FolderOpen,
@@ -64,6 +65,7 @@ interface KanbanItem {
   forwardedTo?: string;
   receiptUrl?: string;
   notes?: string;
+  contract?: Contract;
 }
 
 interface Column {
@@ -225,6 +227,76 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
   const [atpveBase64, setAtpveBase64] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Transfer online copy/print states
+  const [motoAlienada, setMotoAlienada] = useState("NAO");
+  const [orgaoEmissor, setOrgaoEmissor] = useState("SSP");
+  const [estadoRg, setEstadoRg] = useState("MA");
+  const [transferText, setTransferText] = useState("");
+
+  const handlePrintTransfer = () => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Dados para Transferência - ${selectedItem?.title}</title>
+          <style>
+            body { font-family: monospace; white-space: pre-wrap; font-size: 14px; padding: 20px; color: #000; background: #fff; }
+            @media print {
+              body { padding: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <pre style="font-family: monospace; font-size: 14px; white-space: pre-wrap;">${transferText}</pre>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  useEffect(() => {
+    if (selectedItem?.contract) {
+      const c = selectedItem.contract;
+      const client = c.client;
+      const vehicle = c.vehicle;
+      const alienText = motoAlienada === "SIM"
+        ? "SIM"
+        : "NAO, MOTO  NAO FOI ALIENADA\n(ESCOLHER  A OPÇAO NAO)";
+
+      const formattedValue = formatCurrency(c.total_value).replace("R$", "").trim();
+
+      const text = ` DADOS PARA TRANSFERENCIA ONLINE \n\n\n` +
+        `VEICULO: ${(vehicle?.brand || "").toUpperCase()} ${(vehicle?.model || "").toUpperCase()}\n\n` +
+        `PLACA: ${(vehicle?.plate || "").toUpperCase()}\n` +
+        ` RENAVAM: ${vehicle?.renavam || ""}\n\n\n` +
+        `VALOR DO VEÍCULO:  R$ ${formattedValue}\n\n` +
+        `MOTO ALIENADA: ${alienText}\n\n` +
+        `---------------------------------------------------------------------------\n` +
+        `DADOS DO NOVO COMPRADOR \n\n` +
+        `CPF: ${client?.cpf || ""}\n` +
+        `NOME: ${(client?.name || "").toUpperCase()}\n\n` +
+        `RG: ${client?.rg || ""}\n\n` +
+        `ORGAO EMISSOR:  ${orgaoEmissor.toUpperCase()}\n` +
+        `ESTADO: ${estadoRg.toUpperCase()} \n\n` +
+        `DATA DE NASCIMENTO: ${client?.birth_date ? formatDate(client.birth_date) : ""}\n` +
+        `-----------------------------------------------\n\n\n` +
+        `LOGRADOURO DO COMPRADOR ( ENDEREÇO )\n\n` +
+        `CEP: ${client?.zip_code || ""}\n\n` +
+        `CIDADE: ${(client?.city || "").toUpperCase()} \n\n` +
+        `RUA ${(client?.address || "").toUpperCase()}\n\n` +
+        `CASA\n\n` +
+        `COMPLEMENTO: \n\n` +
+        `BAIRRO: ${(client?.neighborhood || "").toUpperCase()}\n` +
+        `--------------------------------------------\n\n` +
+        `EMAIL: ${(client?.email || "").toUpperCase()}\n\n` +
+        `TELEFONE: ${client?.phone || client?.whatsapp || ""}\n\n` +
+        `___________________________________________________`;
+      setTransferText(text);
+    }
+  }, [selectedItem, motoAlienada, orgaoEmissor, estadoRg]);
+
   // Queries
   const { data: processes = [] } = useQuery({
     queryKey: ["transfer-processes"],
@@ -303,6 +375,7 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
       status: c.status,
       plate: c.vehicle?.plate || "N/A",
       value: c.total_value,
+      contract: c,
     });
   });
 
@@ -323,6 +396,7 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
         forwardedTo: p.forwarded_to,
         receiptUrl: p.receipt_url,
         notes: p.notes,
+        contract: p.contract,
       });
     }
   });
@@ -425,6 +499,12 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
     setUpdateForwardedTo(item.forwardedTo || "");
     setUpdateNotes("");
     setAtpveBase64(null);
+
+    // Initialize transfer data states
+    setMotoAlienada("NAO");
+    setOrgaoEmissor("SSP");
+    setEstadoRg(item.contract?.client?.state || "MA");
+
     setIsDetailOpen(true);
   };
 
@@ -624,202 +704,285 @@ export function TransferClient({ initialProcesses, signPendingContracts, userRol
                 </div>
               </div>
 
-              {/* Form de atualização */}
-              {selectedItem.processId ? (
-                <div className="space-y-4 bg-zinc-900/50 p-4 border border-border/40 rounded-lg">
-                  <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
-                    Atualizar Informações Operacionais
-                  </h4>
-                  
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Tabs defaultValue="acompanhamento" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 bg-black/40 border border-white/5 p-1 mb-2">
+                  <TabsTrigger value="acompanhamento" className="text-xs">Acompanhamento & Trâmites</TabsTrigger>
+                  <TabsTrigger value="transferencia_online" className="text-xs">Ficha para Transferência Online</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="acompanhamento" className="space-y-6 pt-2">
+                  {/* Form de atualização */}
+                  {selectedItem.processId ? (
+                    <div className="space-y-4 bg-zinc-900/50 p-4 border border-border/40 rounded-lg">
+                      <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
+                        Atualizar Informações Operacionais
+                      </h4>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <Label htmlFor="update_forwarded_to">Responsável Externo (Despachante)</Label>
+                          <Input
+                            id="update_forwarded_to"
+                            value={updateForwardedTo}
+                            onChange={(e) => setUpdateForwardedTo(e.target.value)}
+                            className="bg-black/30"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label>Documento ATPV-e / Comprovante</Label>
+                          <div className="flex gap-2">
+                            {selectedItem.receiptUrl ? (
+                              <a
+                                href={selectedItem.receiptUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 bg-primary/10 border border-primary/20 text-primary px-3 rounded hover:bg-primary/20 transition-all font-semibold shrink-0"
+                              >
+                                <ExternalLink size={12} /> Ver Atual
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground flex items-center shrink-0">Nenhum enviado</span>
+                            )}
+
+                            <div className="relative flex-1">
+                              <Button variant="outline" className="w-full text-xs gap-1.5 h-10 border-border/40 bg-black/25">
+                                <Upload size={12} />
+                                {atpveBase64 ? "Substituir" : "Enviar ATPV-e"}
+                              </Button>
+                              <input
+                                type="file"
+                                accept="image/*,application/pdf"
+                                onChange={handleAtpveUpload}
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label htmlFor="update_notes">Inserir Nova Nota Operational / Justificativa</Label>
+                        <Textarea
+                          id="update_notes"
+                          placeholder="Adicione um detalhe de andamento..."
+                          value={updateNotes}
+                          onChange={(e: any) => setUpdateNotes(e.target.value)}
+                          className="bg-black/30 h-16"
+                        />
+                      </div>
+
+                      <div className="flex gap-2 justify-end border-t border-border/20 pt-3">
+                        {/* Botões rápidos para avançar status direto daqui */}
+                        {selectedItem.status === "AGUARDANDO_VENDEDOR_DAR_ENTRADA" && (
+                          <Button
+                            type="button"
+                            className="text-[10px] h-8 bg-pink-600 hover:bg-pink-700 text-white font-semibold animate-in fade-in duration-200"
+                            onClick={() => handleDetailUpdate("DADOS_ENVIADOS_PROPRIETARIO")}
+                            disabled={updateMutation.isPending}
+                          >
+                            Enviar p/ Proprietário
+                          </Button>
+                        )}
+                        {selectedItem.status === "DADOS_ENVIADOS_PROPRIETARIO" && (
+                          <Button
+                            type="button"
+                            className="text-[10px] h-8 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold animate-in fade-in duration-200"
+                            onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
+                            disabled={updateMutation.isPending}
+                          >
+                            Iniciar Transferência
+                          </Button>
+                        )}
+                        {selectedItem.status === "EM_PROCESSO_DE_TRANSFERENCIA" && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            className="text-[10px] h-8 font-semibold"
+                            onClick={() => handleDetailUpdate("DOCUMENTAÇÃO_PENDENTE")}
+                            disabled={updateMutation.isPending}
+                          >
+                            Pendenciar Documento
+                          </Button>
+                        )}
+                        {selectedItem.status === "DOCUMENTAÇÃO_PENDENTE" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="text-[10px] h-8 border-border/40 font-semibold"
+                            onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
+                            disabled={updateMutation.isPending}
+                          >
+                            Resolver Pendências
+                          </Button>
+                        )}
+                        {selectedItem.status !== "AGUARDANDO_DESPACHANTE" && selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="text-[10px] h-8 font-semibold"
+                            onClick={() => handleDetailUpdate("AGUARDANDO_DESPACHANTE")}
+                            disabled={updateMutation.isPending}
+                          >
+                            Enviar p/ Despachante
+                          </Button>
+                        )}
+                        {selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
+                          <Button
+                            type="button"
+                            className="text-[10px] h-8 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                            onClick={() => handleDetailUpdate("TRANSFERÊNCIA_CONCLUÍDA")}
+                            disabled={updateMutation.isPending}
+                          >
+                            Finalizar Transferência
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          className="text-[10px] h-8 font-semibold"
+                          variant="outline"
+                          onClick={() => handleDetailUpdate()}
+                          disabled={updateMutation.isPending}
+                        >
+                          {updateMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                          Salvar Notas
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg flex flex-col items-center justify-center text-center gap-2 text-amber-400">
+                      <AlertCircle size={24} />
+                      <p>Este contrato ainda não tem processo de transferência iniciado.</p>
+                      <Button
+                        size="sm"
+                        className="mt-2 text-xs font-semibold"
+                        onClick={() => {
+                          setIsDetailOpen(false);
+                          setIsStartOpen(true);
+                        }}
+                      >
+                        Iniciar Operação de Transferência
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Timeline Audit Logs */}
+                  {selectedItem.processId && (
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
+                        <History size={13} className="text-primary" /> Histórico de Movimentações (Auditoria)
+                      </h4>
+
+                      {loadingLogs ? (
+                        <div className="flex justify-center p-4">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : timelineLogs.length === 0 ? (
+                        <p className="text-muted-foreground italic text-center py-2">Nenhum log operacional registrado.</p>
+                      ) : (
+                        <div className="relative pl-4 border-l border-border/40 space-y-4">
+                          {timelineLogs.map((log) => (
+                            <div key={log.id} className="relative space-y-1">
+                              <span className="absolute -left-[20px] top-1 h-2 w-2 rounded-full bg-primary border border-zinc-950" />
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {log.new_status}
+                                </span>
+                                {log.previous_status && (
+                                  <>
+                                    <ArrowRight size={10} className="text-muted-foreground" />
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {log.previous_status}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <p className="text-muted-foreground leading-normal">{log.notes}</p>
+                              <p className="text-[9px] text-muted-foreground/60 font-mono">
+                                Modificado por {log.user?.name || "Sistema"} em {formatDate(log.created_at)} às {new Date(log.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="transferencia_online" className="space-y-4 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-zinc-900/40 p-4 border border-border/40 rounded-lg">
                     <div className="space-y-1">
-                      <Label htmlFor="update_forwarded_to">Responsável Externo (Despachante)</Label>
+                      <Label htmlFor="moto_alienada" className="text-muted-foreground">Moto Alienada?</Label>
+                      <select
+                        id="moto_alienada"
+                        value={motoAlienada}
+                        onChange={(e) => setMotoAlienada(e.target.value)}
+                        className="flex h-10 w-full rounded-md border border-border/45 bg-black/40 px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-foreground font-semibold"
+                      >
+                        <option value="NAO" className="bg-zinc-950">Não Alienada</option>
+                        <option value="SIM" className="bg-zinc-950">Alienada (Sim)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label htmlFor="orgao_emissor" className="text-muted-foreground">Órgão Emissor</Label>
                       <Input
-                        id="update_forwarded_to"
-                        value={updateForwardedTo}
-                        onChange={(e) => setUpdateForwardedTo(e.target.value)}
-                        className="bg-black/30"
+                        id="orgao_emissor"
+                        value={orgaoEmissor}
+                        onChange={(e) => setOrgaoEmissor(e.target.value)}
+                        className="bg-black/30 h-10 font-semibold text-foreground"
+                        placeholder="ex: SSP"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <Label>Documento ATPV-e / Comprovante</Label>
-                      <div className="flex gap-2">
-                        {selectedItem.receiptUrl ? (
-                          <a
-                            href={selectedItem.receiptUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 bg-primary/10 border border-primary/20 text-primary px-3 rounded hover:bg-primary/20 transition-all font-semibold shrink-0"
-                          >
-                            <ExternalLink size={12} /> Ver Atual
-                          </a>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground flex items-center shrink-0">Nenhum enviado</span>
-                        )}
+                      <Label htmlFor="estado_rg" className="text-muted-foreground">Estado do RG</Label>
+                      <Input
+                        id="estado_rg"
+                        value={estadoRg}
+                        onChange={(e) => setEstadoRg(e.target.value)}
+                        className="bg-black/30 h-10 font-semibold text-foreground"
+                        placeholder="ex: MA"
+                      />
+                    </div>
+                  </div>
 
-                        <div className="relative flex-1">
-                          <Button variant="outline" className="w-full text-xs gap-1.5 h-10 border-border/40 bg-black/25">
-                            <Upload size={12} />
-                            {atpveBase64 ? "Substituir" : "Enviar ATPV-e"}
-                          </Button>
-                          <input
-                            type="file"
-                            accept="image/*,application/pdf"
-                            onChange={handleAtpveUpload}
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                          />
-                        </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="transfer_text" className="text-muted-foreground">Texto formatado (Editável antes de copiar)</Label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-[11px] gap-1 font-semibold border-border/40 hover:bg-primary/10 hover:text-primary transition-all"
+                          onClick={() => {
+                            navigator.clipboard.writeText(transferText);
+                            alert("Texto copiado para a área de transferência!");
+                          }}
+                        >
+                          Copiar Texto
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 text-[11px] gap-1 font-semibold"
+                          onClick={handlePrintTransfer}
+                        >
+                          Imprimir Ficha
+                        </Button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label htmlFor="update_notes">Inserir Nova Nota Operational / Justificativa</Label>
                     <Textarea
-                      id="update_notes"
-                      placeholder="Adicione um detalhe de andamento..."
-                      value={updateNotes}
-                      onChange={(e: any) => setUpdateNotes(e.target.value)}
-                      className="bg-black/30 h-16"
+                      id="transfer_text"
+                      value={transferText}
+                      onChange={(e: any) => setTransferText(e.target.value)}
+                      className="bg-black/40 border-border/40 font-mono text-[11px] leading-relaxed h-[320px] w-full resize-y custom-scrollbar text-foreground"
                     />
                   </div>
-
-                  <div className="flex gap-2 justify-end border-t border-border/20 pt-3">
-                    {/* Botões rápidos para avançar status direto daqui */}
-                    {selectedItem.status === "AGUARDANDO_VENDEDOR_DAR_ENTRADA" && (
-                      <Button
-                        type="button"
-                        className="text-[10px] h-8 bg-pink-600 hover:bg-pink-700 text-white font-semibold animate-in fade-in duration-200"
-                        onClick={() => handleDetailUpdate("DADOS_ENVIADOS_PROPRIETARIO")}
-                        disabled={updateMutation.isPending}
-                      >
-                        Enviar p/ Proprietário
-                      </Button>
-                    )}
-                    {selectedItem.status === "DADOS_ENVIADOS_PROPRIETARIO" && (
-                      <Button
-                        type="button"
-                        className="text-[10px] h-8 bg-cyan-600 hover:bg-cyan-700 text-white font-semibold animate-in fade-in duration-200"
-                        onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
-                        disabled={updateMutation.isPending}
-                      >
-                        Iniciar Transferência
-                      </Button>
-                    )}
-                    {selectedItem.status === "EM_PROCESSO_DE_TRANSFERENCIA" && (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        className="text-[10px] h-8 font-semibold"
-                        onClick={() => handleDetailUpdate("DOCUMENTAÇÃO_PENDENTE")}
-                        disabled={updateMutation.isPending}
-                      >
-                        Pendenciar Documento
-                      </Button>
-                    )}
-                    {selectedItem.status === "DOCUMENTAÇÃO_PENDENTE" && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="text-[10px] h-8 border-border/40 font-semibold"
-                        onClick={() => handleDetailUpdate("EM_PROCESSO_DE_TRANSFERENCIA")}
-                        disabled={updateMutation.isPending}
-                      >
-                        Resolver Pendências
-                      </Button>
-                    )}
-                    {selectedItem.status !== "AGUARDANDO_DESPACHANTE" && selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="text-[10px] h-8 font-semibold"
-                        onClick={() => handleDetailUpdate("AGUARDANDO_DESPACHANTE")}
-                        disabled={updateMutation.isPending}
-                      >
-                        Enviar p/ Despachante
-                      </Button>
-                    )}
-                    {selectedItem.status !== "TRANSFERÊNCIA_CONCLUÍDA" && (
-                      <Button
-                        type="button"
-                        className="text-[10px] h-8 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                        onClick={() => handleDetailUpdate("TRANSFERÊNCIA_CONCLUÍDA")}
-                        disabled={updateMutation.isPending}
-                      >
-                        Finalizar Transferência
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      className="text-[10px] h-8 font-semibold"
-                      variant="outline"
-                      onClick={() => handleDetailUpdate()}
-                      disabled={updateMutation.isPending}
-                    >
-                      {updateMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-                      Salvar Notas
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg flex flex-col items-center justify-center text-center gap-2 text-amber-400">
-                  <AlertCircle size={24} />
-                  <p>Este contrato ainda não tem processo de transferência iniciado.</p>
-                  <Button
-                    size="sm"
-                    className="mt-2 text-xs font-semibold"
-                    onClick={() => {
-                      setIsDetailOpen(false);
-                      setIsStartOpen(true);
-                    }}
-                  >
-                    Iniciar Operação de Transferência
-                  </Button>
-                </div>
-              )}
-
-              {/* Timeline Audit Logs */}
-              {selectedItem.processId && (
-                <div className="space-y-3">
-                  <h4 className="font-bold text-foreground flex items-center gap-1.5 border-b border-border/20 pb-1.5">
-                    <History size={13} className="text-primary" /> Histórico de Movimentações (Auditoria)
-                  </h4>
-
-                  {loadingLogs ? (
-                    <div className="flex justify-center p-4">
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : timelineLogs.length === 0 ? (
-                    <p className="text-muted-foreground italic text-center py-2">Nenhum log operacional registrado.</p>
-                  ) : (
-                    <div className="relative pl-4 border-l border-border/40 space-y-4">
-                      {timelineLogs.map((log) => (
-                        <div key={log.id} className="relative space-y-1">
-                          <span className="absolute -left-[20px] top-1 h-2 w-2 rounded-full bg-primary border border-zinc-950" />
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-foreground">
-                              {log.new_status}
-                            </span>
-                            {log.previous_status && (
-                              <>
-                                <ArrowRight size={10} className="text-muted-foreground" />
-                                <span className="text-[10px] text-muted-foreground">
-                                  {log.previous_status}
-                                </span>
-                              </>
-                            )}
-                          </div>
-                          <p className="text-muted-foreground leading-normal">{log.notes}</p>
-                          <p className="text-[9px] text-muted-foreground/60 font-mono">
-                            Modificado por {log.user?.name || "Sistema"} em {formatDate(log.created_at)} às {new Date(log.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </DialogContent>

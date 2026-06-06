@@ -437,3 +437,118 @@ export interface ContractReview {
   created_at: string;
   updated_at: string;
 }
+
+// =========================================================================
+// MÓDULO OFICINA E ESTOQUE DE PEÇAS (MIGRAÇÃO)
+// =========================================================================
+
+export interface WorkshopProduct {
+  id: string;
+  company_id: string;
+  name: string;
+  vehicleModel: string;
+  category: string;
+  stock: number;
+  unitValue: number;
+  imageUrl?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkshopEntry {
+  id: string;
+  company_id: string;
+  productId: string;
+  productName: string;
+  vehicleModel: string;
+  category: string;
+  quantity: number;
+  totalValue: number;
+  invoiceValue: number;
+  invoiceNumber: string;
+  buyerName: string;
+  storeName: string;
+  date: string;
+  authorUid: string;
+  created_at: string;
+}
+
+export interface WorkshopExitItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  vehicleModel: string;
+  unitValue?: number;
+}
+
+export interface WorkshopExit {
+  id: string;
+  company_id: string;
+  recipient: string;
+  destination: string;
+  date: string;
+  items: WorkshopExitItem[];
+  totalVolumes: number;
+  authorUid: string;
+  created_at: string;
+}
+
+export interface WorkshopMaintenancePartRequested {
+  id: string;
+  name: string;
+  value: number;
+}
+
+export type WorkshopMaintenanceStatus =
+  | 'Aguardando vez'
+  | 'Entrada'
+  | 'Diagnóstico'
+  | 'Aguardando peça'
+  | 'Em execução'
+  | 'Finalizada'
+  | 'Concluída'
+  | 'Entregue';
+
+export interface WorkshopMaintenance {
+  id: string;
+  company_id: string;
+  vehiclePlate: string;
+  vehicleModel: string;
+  date: string;
+  exitDate?: string;
+  takenBy?: string;
+  workshop?: string;
+  mechanicName?: string;
+  partsTaken: WorkshopExitItem[];
+  partsRequested: WorkshopMaintenancePartRequested[];
+  deliveryDate?: string;
+  observation?: string;
+  authorUid: string;
+  status: WorkshopMaintenanceStatus;
+  startDate?: string;
+  conclusionDate?: string;
+  clientName?: string;
+  clientPhone?: string;
+  vehicleYear?: string;
+  vehicleKm?: string;
+  serviceRequested?: string;
+  laborValue?: number;
+  isUrgent?: boolean;
+  exitRegistered?: boolean;
+  imageUrl?: string;
+  created_at: string;
+  updated_at: string;
+  // Relacionamentos
+  mechanic?: UserProfile;
+}
+
+export interface WorkshopAppointment {
+  id: string;
+  company_id: string;
+  time: string;
+  date: string;
+  title: string;
+  clientName?: string;
+  vehicleModel?: string;
+  created_at: string;
+}

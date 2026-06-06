@@ -115,6 +115,50 @@ export async function deleteEmployee(employeeId: string) {
   }
 }
 
+export async function updateEmployee(
+  employeeId: string,
+  data: {
+    name: string;
+    role: UserRole;
+  }
+) {
+  const user = await getCurrentUser();
+  if (!user || !user.company_id || user.role !== "admin") {
+    throw new Error("N├úo autorizado.");
+  }
+
+  if (employeeId === user.id && data.role !== "admin") {
+    return { success: false, error: "Voc├¬ n├úo pode remover seu pr├│prio acesso de Administrador." };
+  }
+
+  try {
+    const nowStr = new Date().toISOString();
+    await db.collection("users").doc(employeeId).update({
+      name: data.name,
+      role: data.role,
+      updated_at: nowStr,
+    });
+
+    // Registra auditoria da altera├º├úo de cargo/dados do colaborador
+    await auditService.logAction(db, {
+      user_id: user.id,
+      company_id: user.company_id,
+      action: "UPDATE_EMPLOYEE",
+      details: {
+        employee_id: employeeId,
+        updated_name: data.name,
+        updated_role: data.role,
+      },
+    });
+
+    revalidatePath("/settings");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Erro ao atualizar funcion├írio:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function getCompanyAuditLogs(limit = 100) {
   const user = await getCurrentUser();
   if (!user || !user.company_id || user.role !== "admin") {

@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/actions/authActions";
+import { registerSession, closeSession } from "@/actions/sessionActions";
 import {
   LayoutDashboard,
   Users,
@@ -18,6 +19,8 @@ import {
   User as UserIcon,
   ShoppingCart,
   Settings,
+  Wrench,
+  Archive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -37,6 +40,30 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
+
+  React.useEffect(() => {
+    const performPing = async () => {
+      try {
+        const storedSessId = sessionStorage.getItem("erp_session_id") || undefined;
+        const res = await registerSession(storedSessId);
+        if (res.success && res.sessionId) {
+          sessionStorage.setItem("erp_session_id", res.sessionId);
+        }
+      } catch (err) {
+        console.error("Erro ao registrar atividade da sessão:", err);
+      }
+    };
+
+    // Primeiro ping imediato
+    performPing();
+
+    // Ping subsequente a cada 60 segundos
+    const intervalId = setInterval(performPing, 60000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
 
   const roleLabels: Record<string, string> = {
     admin: "Administrador",
@@ -90,7 +117,7 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       name: "Pós-Venda (CRM)",
       href: "/transfer",
       icon: FileCheck,
-      roles: ["admin", "operacional"],
+      roles: ["admin", "operacional", "vendedor"],
       colorClass: "bg-rose-500/10 border-rose-500/20 text-rose-400",
       iconColor: "text-rose-400",
     },
@@ -103,6 +130,30 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       iconColor: "text-amber-400",
     },
     {
+      header: "OFICINA E ALMOXARIFADO",
+      roles: ["admin", "operacional", "financeiro"],
+    },
+    {
+      name: "Painel Oficina (OS)",
+      href: "/workshop",
+      icon: Wrench,
+      roles: ["admin", "operacional"],
+      colorClass: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+      iconColor: "text-blue-400",
+    },
+    {
+      name: "Estoque de Peças",
+      href: "/workshop/inventory",
+      icon: Archive,
+      roles: ["admin", "operacional", "financeiro"],
+      colorClass: "bg-amber-500/10 border-amber-500/20 text-amber-400",
+      iconColor: "text-amber-400",
+    },
+    {
+      header: "SISTEMA",
+      roles: ["admin"],
+    },
+    {
       name: "Configurações",
       href: "/settings",
       icon: Settings,
@@ -110,13 +161,25 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
       colorClass: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
       iconColor: "text-zinc-400",
     },
-  ];
+  ] as Array<
+    | { name: string; href: string; icon: any; roles: string[]; colorClass: string; iconColor: string }
+    | { header: string; roles: string[] }
+  >;
 
   const filteredItems = allItems.filter((item) =>
     item.roles.includes(userProfile.role)
   );
 
   const handleLogout = async () => {
+    try {
+      const storedSessId = sessionStorage.getItem("erp_session_id");
+      if (storedSessId) {
+        await closeSession(storedSessId);
+        sessionStorage.removeItem("erp_session_id");
+      }
+    } catch (err) {
+      console.error("Erro ao fechar sessão no logout:", err);
+    }
     const res = await logout();
     if (res.success) {
       router.push("/login");
@@ -186,12 +249,22 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
         {/* Navigation Items */}
         <nav className="flex-1 space-y-1.5 px-4 py-6 overflow-y-auto">
           {filteredItems.map((item) => {
-            const isActive = pathname.startsWith(item.href);
-            const Icon = item.icon;
+            if ("header" in item) {
+              return (
+                <div key={item.header} className="pt-4 pb-1.5 px-3 border-t border-border/10 first:border-none">
+                  <p className="text-[10px] font-bold tracking-wider text-muted-foreground/60 uppercase">
+                    {item.header}
+                  </p>
+                </div>
+              );
+            }
+            const linkItem = item as { name: string; href: string; icon: any; colorClass: string; iconColor: string };
+            const isActive = pathname === linkItem.href || (linkItem.href !== "/dashboard" && pathname.startsWith(linkItem.href));
+            const Icon = linkItem.icon;
             return (
               <Link
-                key={item.name}
-                href={item.href}
+                key={linkItem.name}
+                href={linkItem.href}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all group ${
                   isActive
                     ? "bg-zinc-800/40 text-foreground border border-zinc-800/50"
@@ -201,12 +274,12 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
               >
                 <div className={`p-1.5 rounded-lg border transition-all ${
                   isActive
-                    ? (item as any).colorClass
+                    ? linkItem.colorClass
                     : "bg-zinc-950/40 border-zinc-900 text-muted-foreground group-hover:bg-zinc-900/40 group-hover:border-zinc-800"
                 }`}>
-                  <Icon size={15} className={`transition-colors ${isActive ? "" : `group-hover:${(item as any).iconColor}`}`} />
+                  <Icon size={15} className={`transition-colors ${isActive ? "" : `group-hover:${linkItem.iconColor}`}`} />
                 </div>
-                <span className="transition-colors">{item.name}</span>
+                <span className="transition-colors">{linkItem.name}</span>
               </Link>
             );
           })}
@@ -266,6 +339,10 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
                 ? "Fluxo Financeiro"
                 : pathname.startsWith("/settings")
                 ? "Configurações do Sistema"
+                : pathname.startsWith("/workshop/inventory")
+                ? "Estoque de Peças e Acessórios"
+                : pathname.startsWith("/workshop")
+                ? "Painel de Oficina (OS)"
                 : "Sistema ERP"}
             </h1>
           </div>

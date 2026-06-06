@@ -17,16 +17,12 @@ export default async function TransferPage() {
 
   // Pre-load transfer processes and contracts on the server
   let initialProcesses: any[] = [];
-  let signPendingContracts: any[] = [];
+  let initialContracts: any[] = [];
 
   try {
     initialProcesses = await getTransferProcesses();
-    const allContracts = await getContracts({ limit: 100 });
-    signPendingContracts = (allContracts.data || []).filter(
-      (c) =>
-        c.status === "AGUARDANDO_VENDEDOR_DAR_ENTRADA" ||
-        c.status === "FALTA_PAGAMENTO_DE_ENTRADA"
-    );
+    const allContracts = await getContracts({ limit: 500 });
+    initialContracts = allContracts.data || [];
   } catch (error) {
     console.error("Failed to load transfer page data on server:", error);
   }
@@ -46,7 +42,7 @@ export default async function TransferPage() {
     <SidebarLayout userProfile={userProfile}>
       <TransferClient
         initialProcesses={initialProcesses}
-        signPendingContracts={signPendingContracts}
+        signPendingContracts={initialContracts}
         userRole={profile.role}
       />
     </SidebarLayout>

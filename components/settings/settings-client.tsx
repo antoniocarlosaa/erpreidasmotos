@@ -4,7 +4,7 @@ import React, { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import SignatureCanvas from "react-signature-canvas";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updateCompanyDetails, createEmployee, deleteEmployee, resetCompanyData, clearAuditLogs } from "@/actions/settingsActions";
+import { updateCompanyDetails, createEmployee, deleteEmployee, updateEmployee, resetCompanyData, clearAuditLogs } from "@/actions/settingsActions";
 import { UserRole, AuditLog } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,7 @@ import {
   Users,
   UserPlus,
   Trash2,
+  Edit2,
   Save,
   Loader2,
   ShieldCheck,
@@ -48,12 +49,19 @@ import {
   MapPin,
   FileText,
   AlertTriangle,
+  Clock,
 } from "lucide-react";
 import { formatDate } from "@/utils/formatters";
 
 const renderActionDescription = (log: any) => {
   const details = log.details || {};
   switch (log.action) {
+    case "LOGIN":
+      return `Efetuou login no sistema (${details.device_type || "N/A"})`;
+    case "LOGOUT":
+      return `Efetuou logout do sistema`;
+    case "UPDATE_EMPLOYEE":
+      return `Alterou cargo/dados do colaborador: ${details.updated_name || "N/A"} (Cargo: ${details.updated_role || "N/A"})`;
     case "CREATE_CLIENT":
       return `Cadastrou o cliente: ${details.client_name || details.name || "N/A"}`;
     case "UPDATE_CLIENT":
@@ -98,6 +106,27 @@ const renderActionDescription = (log: any) => {
   }
 };
 
+const formatSessionDuration = (loginAt: string, lastActiveAt: string) => {
+  try {
+    const start = new Date(loginAt).getTime();
+    const end = new Date(lastActiveAt).getTime();
+    const diffMs = end - start;
+    if (diffMs <= 0) return "Menos de 1 min";
+    
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffHours > 0) {
+      const minsRemaining = diffMins % 60;
+      return `${diffHours}h ${minsRemaining}m`;
+    }
+    return `${diffMins} min`;
+  } catch (e) {
+    return "N/A";
+  }
+};
+
 interface SettingsClientProps {
   company: {
     id: string;
@@ -110,9 +139,10 @@ interface SettingsClientProps {
   } | null;
   initialEmployees: any[];
   initialAuditLogs: any[];
+  initialSessions: any[];
 }
 
-export function SettingsClient({ company, initialEmployees, initialAuditLogs }: SettingsClientProps) {
+export function SettingsClient({ company, initialEmployees, initialAuditLogs, initialSessions }: SettingsClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("company");
@@ -133,6 +163,9 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
   const [newEmpEmail, setNewEmpEmail] = useState("");
   const [newEmpPassword, setNewEmpPassword] = useState("");
   const [newEmpRole, setNewEmpRole] = useState<UserRole>("vendedor");
+
+  // Session states
+  const [sessions, setSessions] = useState<any[]>(initialSessions);
 
   // Loading / Error states
   const [isUpdatingCompany, setIsUpdatingCompany] = useState(false);
@@ -289,6 +322,49 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
     }
   };
 
+  // Edit employee states
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editEmpId, setEditEmpId] = useState("");
+  const [editEmpName, setEditEmpName] = useState("");
+  const [editEmpRole, setEditEmpRole] = useState<UserRole>("vendedor");
+  const [isUpdatingEmployee, setIsUpdatingEmployee] = useState(false);
+
+  const handleOpenEdit = (emp: any) => {
+    setEditEmpId(emp.id);
+    setEditEmpName(emp.name);
+    setEditEmpRole(emp.role);
+    setIsEditOpen(true);
+  };
+
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editEmpName) {
+      alert("Preencha o nome do funcion├írio.");
+      return;
+    }
+
+    setIsUpdatingEmployee(true);
+    try {
+      const res = await updateEmployee(editEmpId, {
+        name: editEmpName,
+        role: editEmpRole,
+      });
+
+      if (res.success) {
+        alert("Funcion├írio atualizado com sucesso!");
+        setIsEditOpen(false);
+        setEmployees(employees.map(e => e.id === editEmpId ? { ...e, name: editEmpName, role: editEmpRole } : e));
+        router.refresh();
+      } else {
+        alert(`Falha ao atualizar: ${res.error}`);
+      }
+    } catch (err: any) {
+      alert(`Erro ao atualizar: ${err.message}`);
+    } finally {
+      setIsUpdatingEmployee(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -301,7 +377,7 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-1 sm:grid-cols-3 w-full max-w-lg bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
+        <TabsList className="grid grid-cols-1 sm:grid-cols-4 w-full max-w-2xl bg-zinc-900 border border-border/40 p-1 rounded-lg h-auto gap-1">
           <TabsTrigger value="company" className="rounded-md font-semibold text-xs gap-1.5">
             <Building2 size={14} /> Dados da Loja
           </TabsTrigger>
@@ -310,6 +386,9 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
           </TabsTrigger>
           <TabsTrigger value="auditoria" className="rounded-md font-semibold text-xs gap-1.5">
             <ShieldCheck size={14} /> Auditoria e Logs
+          </TabsTrigger>
+          <TabsTrigger value="sessoes" className="rounded-md font-semibold text-xs gap-1.5">
+            <Clock size={14} /> Hist├│rico de Acessos
           </TabsTrigger>
         </TabsList>
 
@@ -506,20 +585,31 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteEmployee(emp.id, emp.name)}
-                              disabled={deletingId === emp.id}
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                              title="Remover Acesso"
-                            >
-                              {deletingId === emp.id ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : (
-                                <Trash2 size={14} />
-                              )}
-                            </Button>
+                            <div className="flex justify-end gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenEdit(emp)}
+                                className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                                title="Editar Cargo / Dados"
+                              >
+                                <Edit2 size={14} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteEmployee(emp.id, emp.name)}
+                                disabled={deletingId === emp.id}
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                title="Remover Acesso"
+                              >
+                                {deletingId === emp.id ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Trash2 size={14} />
+                                )}
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -723,6 +813,85 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
           </Card>
         </TabsContent>
 
+        {/* HIST├ôRICO DE ACESSOS */}
+        <TabsContent value="sessoes" className="mt-4">
+          <Card className="glass-card border-white/5">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                <Clock size={16} /> Hist├│rico de Acessos e Sess├Áes
+              </CardTitle>
+              <CardDescription>
+                Acompanhe quem acessou o sistema, por qual dispositivo, IP e tempo de perman├¬ncia ativa.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="max-h-[500px] overflow-y-auto">
+                <Table className="text-xs">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-border/40">
+                      <TableHead className="font-semibold">Colaborador</TableHead>
+                      <TableHead className="font-semibold">Dispositivo</TableHead>
+                      <TableHead className="font-semibold">Endere├ºo IP</TableHead>
+                      <TableHead className="font-semibold">Hor├írio de Entrada</TableHead>
+                      <TableHead className="font-semibold">├Ültima Atividade</TableHead>
+                      <TableHead className="font-semibold">Tempo Online</TableHead>
+                      <TableHead className="font-semibold">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sessions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          Nenhum registro de acesso encontrado.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      sessions.map((sess: any) => (
+                        <TableRow key={sess.id} className="border-b border-border/40 hover:bg-secondary/10">
+                          <TableCell className="font-bold text-foreground">
+                            {sess.user?.name || "Desconhecido"}
+                            <span className="block text-[10px] text-muted-foreground font-mono font-normal">
+                              {sess.user?.email || "-"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-[10px] font-semibold bg-zinc-800/40 border-zinc-700/50">
+                              {sess.device_type || "N/A"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {sess.ip_address}
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {formatDate(sess.login_at)} {sess.login_at.split("T")[1]?.substring(0, 5)}
+                          </TableCell>
+                          <TableCell className="font-mono text-muted-foreground">
+                            {formatDate(sess.last_active_at)} {sess.last_active_at.split("T")[1]?.substring(0, 5)}
+                          </TableCell>
+                          <TableCell className="font-bold text-foreground font-mono">
+                            {formatSessionDuration(sess.login_at, sess.last_active_at)}
+                          </TableCell>
+                          <TableCell>
+                            {sess.status === "ativo" ? (
+                              <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold animate-pulse">
+                                Online / Ativo
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-semibold text-muted-foreground border-zinc-800 bg-zinc-900/30">
+                                Ausente
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
 
       {/* Reset Confirmation Dialog */}
@@ -768,6 +937,62 @@ export function SettingsClient({ company, initialEmployees, initialAuditLogs }: 
               </Button>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Employee Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-md bg-zinc-950 border-border/40 text-foreground text-xs">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-primary">
+              <Edit2 size={20} /> Editar Colaborador
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Altere o nome ou o perfil de acesso (cargo) do colaborador selecionado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdateEmployee} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-emp-name">Nome Completo *</Label>
+              <Input
+                id="edit-emp-name"
+                placeholder="Nome do funcion├írio"
+                value={editEmpName}
+                onChange={(e) => setEditEmpName(e.target.value)}
+                className="bg-black/30 h-10"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-emp-role">Cargo / Perfil de Acesso *</Label>
+              <Select
+                value={editEmpRole}
+                onValueChange={(val) => setEditEmpRole(val as UserRole)}
+              >
+                <SelectTrigger className="bg-black/30 h-10">
+                  <SelectValue placeholder="Selecione o Cargo" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 text-foreground border border-border/40 text-xs">
+                  <SelectItem value="vendedor">Vendedor (Cadastro Vendas/Invent├írio)</SelectItem>
+                  <SelectItem value="operacional">Operador P├│s-Venda (Kanban/Transfer├¬ncia)</SelectItem>
+                  <SelectItem value="financeiro">Financeiro (Baixas/Fluxo de Parcelas)</SelectItem>
+                  <SelectItem value="admin">Administrador (Acesso total + Configura├º├Áes)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter className="pt-4 border-t border-border/30 gap-2">
+              <Button type="button" variant="ghost" onClick={() => setIsEditOpen(false)} className="h-9 text-xs">
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isUpdatingEmployee} className="h-9 text-xs font-semibold">
+                {isUpdatingEmployee && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Salvar Altera├º├Áes
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
