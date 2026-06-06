@@ -1947,7 +1947,11 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                 return (
                   <Card
                     key={vehicle.id}
-                    className="glass-card overflow-hidden border-white/5 group hover:border-primary/20 transition-all duration-300 flex flex-col justify-between"
+                    className={`glass-card overflow-hidden group transition-all duration-300 flex flex-col justify-between ${
+                      vehicle.status === "vendido"
+                        ? "border-red-500/25 bg-red-950/10 hover:border-red-500/40"
+                        : "border-white/5 hover:border-primary/20"
+                    }`}
                   >
                     <div className="relative aspect-video w-full bg-secondary/30 overflow-hidden flex items-center justify-center">
                       {(vehicle.photos_ready && vehicle.photos_ready.length > 0) ? (
@@ -2149,7 +2153,12 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                       const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
 
                       return (
-                        <TableRow key={vehicle.id} className="border-border/40 hover:bg-secondary/20">
+                        <TableRow 
+                          key={vehicle.id} 
+                          className={`border-border/40 hover:bg-secondary/20 ${
+                            vehicle.status === "vendido" ? "bg-red-950/5 hover:bg-red-950/10" : ""
+                          }`}
+                        >
                           <TableCell className="font-medium text-foreground">
                             <div className="flex items-center gap-2">
                               <div className="h-8 w-8 rounded overflow-hidden bg-secondary/30 hidden sm:block">

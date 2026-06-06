@@ -280,7 +280,58 @@ export const contractService = {
     }
 
     if (paymentsToCreate.length > 0) {
-      await financialRepository.createPayments(supabase, paymentsToCreate);
+      const createdPayments = await financialRepository.createPayments(supabase, paymentsToCreate);
+
+      // Criar lançamentos no fluxo de caixa (financial_entries) para pagamentos que entram como PAGO diretamente
+      const companyId = createdContract.company_id;
+      const todayStr = new Date().toISOString().split("T")[0];
+
+      for (const p of createdPayments) {
+        if (p.status === "PAGO") {
+          let category = "Recebimento Contrato";
+          let description = `Recebimento - Contrato #${createdContract.contract_number} (Cliente: ${clientData?.name || "Cliente"})`;
+
+          if (p.installment_number === 0) {
+            category = "Entrada Veículo";
+            description = `Entrada recebida (Veículo de Troca) - Contrato #${createdContract.contract_number} (Cliente: ${clientData?.name || "Cliente"})`;
+          } else if (p.installment_number === 101) {
+            category = "Entrada Dinheiro";
+            description = `Recebimento no ato (Espécie) - Contrato #${createdContract.contract_number} (Cliente: ${clientData?.name || "Cliente"})`;
+          } else if (p.installment_number === 102) {
+            category = "Entrada PIX";
+            description = `Recebimento no ato (PIX) - Contrato #${createdContract.contract_number} (Cliente: ${clientData?.name || "Cliente"})`;
+          } else if (p.installment_number === 103) {
+            category = "Entrada Cartão";
+            description = `Recebimento no ato (Cartão) - Contrato #${createdContract.contract_number} (Cliente: ${clientData?.name || "Cliente"})`;
+          }
+
+          await financialRepository.createEntry(supabase, {
+            company_id: companyId,
+            contract_id: createdContract.id,
+            type: "RECEITA",
+            amount: p.amount,
+            description,
+            entry_date: todayStr,
+            category,
+          });
+        }
+      }
+
+      // Se for Compra e Venda (Troca), registrar também a despesa de aquisição do veículo recebido na troca
+      if (contractData.modality === "compra_venda") {
+        const tradeVal = (contractData as any).trade_value || 0;
+        if (tradeVal > 0) {
+          await financialRepository.createEntry(supabase, {
+            company_id: companyId,
+            contract_id: createdContract.id,
+            type: "DESPESA",
+            amount: tradeVal,
+            description: `Aquisição por Troca (Entrada no Estoque) - Contrato #${createdContract.contract_number} (Veículo: ${(contractData as any).trade_brand_model}, Cliente: ${clientData?.name || "Cliente"})`,
+            entry_date: todayStr,
+            category: "Compra Veículo",
+          });
+        }
+      }
     }
 
     // Gerar Parcela de Volta/Troco separado se aplicável

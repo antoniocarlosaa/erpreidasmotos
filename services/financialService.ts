@@ -49,13 +49,19 @@ export const financialService = {
     let category = isDownPayment ? "Entrada Veículo" : "Parcela Financiamento";
     let description = "";
 
-    if (isRefund) {
+    if (contract.modality === "compra") {
+      type = "DESPESA";
+      category = "Compra Veículo";
+      description = isDownPayment
+        ? `Pagamento de Entrada (Compra de Veículo) - Contrato #${contract.contract_number} (Cliente: ${contract.client?.name || "Cliente"})`
+        : `Pagamento Parcela ${payment.installment_number}/${contract.installments_count} (Compra de Veículo) - Contrato #${contract.contract_number}`;
+    } else if (isRefund) {
       type = "DESPESA";
       category = "Troco/Volta Cliente";
-      description = `Devolução de Troco/Volta - Contrato #${contract.contract_number} (Cliente: ${contract.client?.name})`;
+      description = `Devolução de Troco/Volta - Contrato #${contract.contract_number} (Cliente: ${contract.client?.name || "Cliente"})`;
     } else {
       description = isDownPayment
-        ? `Entrada recebida - Contrato #${contract.contract_number} (Cliente: ${contract.client?.name})`
+        ? `Entrada recebida - Contrato #${contract.contract_number} (Cliente: ${contract.client?.name || "Cliente"})`
         : `Recebimento Parcela ${payment.installment_number}/${contract.installments_count} - Contrato #${contract.contract_number}`;
     }
 
