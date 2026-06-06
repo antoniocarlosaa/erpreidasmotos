@@ -288,6 +288,11 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   // Local sale price input in Custos tab
   const [localSalePrice, setLocalSalePrice] = useState<string>("");
 
+  // States for printing vehicle list
+  const [printSearch, setPrintSearch] = useState("");
+  const [printCategory, setPrintCategory] = useState("todos");
+  const [printStatus, setPrintStatus] = useState("disponivel");
+
   // Load publication configs from Firestore on mount to share between devices (with local fallback)
   useEffect(() => {
     const url = localStorage.getItem("catalog_url");
@@ -341,6 +346,20 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const { data: vehiclesWithDetails = [], isLoading: isLoadingDetails } = useQuery({
     queryKey: ["vehiclesWithDetails"],
     queryFn: () => getVehiclesWithDetails(),
+  });
+
+  const filteredPrintVehicles = vehiclesWithDetails.filter((v: any) => {
+    const term = printSearch.toLowerCase();
+    const matchesSearch =
+      (v.model || "").toLowerCase().includes(term) ||
+      (v.brand || "").toLowerCase().includes(term) ||
+      (v.version || "").toLowerCase().includes(term) ||
+      (v.plate || "").toLowerCase().includes(term);
+
+    const matchesCategory = printCategory === "todos" || v.category === printCategory;
+    const matchesStatus = printStatus === "todos" || v.status === printStatus;
+
+    return matchesSearch && matchesCategory && matchesStatus;
   });
 
   const vehicles = queryResult?.data || [];
@@ -1164,6 +1183,73 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     }
   };
 
+  const handlePrintVehicleList = (filteredList: any[]) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const rowsHtml = filteredList.map(v => `
+      <tr>
+        <td><strong>${v.brand} ${v.model} ${v.version || ""}</strong></td>
+        <td style="font-family: monospace; font-size: 13px;">${v.plate}</td>
+        <td>${v.year}</td>
+        <td>${v.color}</td>
+        <td style="font-weight: bold; color: #10b981;">${formatCurrency(v.value || 0)}</td>
+      </tr>
+    `).join("");
+
+    const htmlContent = `
+      <html>
+        <head>
+          <title>Lista de Veículos - REI DAS MOTOS</title>
+          <style>
+            body { font-family: system-ui, -apple-system, sans-serif; padding: 30px; font-size: 13px; color: #111; }
+            .header { text-align: center; border-bottom: 2px solid #27272a; padding-bottom: 15px; margin-bottom: 25px; }
+            .header h1 { margin: 0; font-size: 20px; text-transform: uppercase; color: #000; letter-spacing: 0.5px; }
+            .header p { margin: 5px 0 0 0; color: #71717a; font-size: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+            th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e4e4e7; }
+            th { background: #f4f4f5; font-weight: bold; text-transform: uppercase; font-size: 11px; color: #3f3f46; letter-spacing: 0.5px; }
+            tr:nth-child(even) { background: #fafafa; }
+            .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #a1a1aa; border-top: 1px solid #e4e4e7; padding-top: 15px; }
+            @media print {
+              body { padding: 0; }
+              @page { margin: 1.5cm; }
+            }
+          </style>
+        </head>
+        <body onload="window.print(); window.close();">
+          <div class="header">
+            <h1>Lista de Veículos em Estoque</h1>
+            <p>REI DAS MOTOS SLZ • Relatório Gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}</p>
+            <p>Total de Veículos: ${filteredList.length}</p>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Veículo (Marca/Modelo/Versão)</th>
+                <th>Placa</th>
+                <th>Ano</th>
+                <th>Cor</th>
+                <th>Valor de Venda</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            <p>REI DAS MOTOS SLZ - Sistema ERP de Gestão Automotiva</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
   // Handle saving online catalog settings
   const handleSaveCatalogSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1343,6 +1429,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
           <TabsTrigger value="publicacao" className="rounded-lg font-bold text-sm px-4 py-2.5 flex items-center gap-2">
             <Share2 size={16} />
             Publicação
+          </TabsTrigger>
+          <TabsTrigger value="impressao" className="rounded-lg font-bold text-sm px-4 py-2.5 flex items-center gap-2">
+            <ClipboardList size={16} />
+            Lista para Impressão
           </TabsTrigger>
         </TabsList>
 
@@ -2387,6 +2477,106 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        {/* Tab 5: RELATÓRIO E LISTA PARA IMPRESSÃO */}
+        <TabsContent value="impressao" className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-wrap gap-2 flex-1 max-w-4xl">
+              {/* Search */}
+              <div className="relative min-w-[240px] flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquisar veículo por modelo, marca ou placa..."
+                  value={printSearch}
+                  onChange={(e) => setPrintSearch(e.target.value)}
+                  className="pl-9 bg-card/60 text-xs h-9"
+                />
+              </div>
+
+              {/* Category Filter */}
+              <Select value={printCategory} onValueChange={setPrintCategory}>
+                <SelectTrigger className="w-[150px] bg-card/60 border-border/40 text-xs h-9">
+                  <SelectValue placeholder="Categoria" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 text-foreground border-border/40 text-xs">
+                  <SelectItem value="todos">Todas Categorias</SelectItem>
+                  <SelectItem value="carro">Carros</SelectItem>
+                  <SelectItem value="moto">Motos</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Status Filter */}
+              <Select value={printStatus} onValueChange={setPrintStatus}>
+                <SelectTrigger className="w-[180px] bg-card/60 border-border/40 text-xs h-9">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-950 text-foreground border-border/40 text-xs">
+                  <SelectItem value="todos">Todos Status</SelectItem>
+                  <SelectItem value="disponivel">Disponíveis</SelectItem>
+                  <SelectItem value="reservado">Reservados</SelectItem>
+                  <SelectItem value="vendido">Vendidos</SelectItem>
+                  <SelectItem value="em_preparacao">Em Preparação</SelectItem>
+                  <SelectItem value="aguardando_documentacao">Aguardando Doc.</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              onClick={() => handlePrintVehicleList(filteredPrintVehicles)}
+              className="gap-1.5 text-xs font-semibold h-9 bg-primary hover:bg-primary/90"
+              disabled={filteredPrintVehicles.length === 0}
+            >
+              <ClipboardList size={14} /> Imprimir Lista (${filteredPrintVehicles.length})
+            </Button>
+          </div>
+
+          <Card className="glass-card border-white/5">
+            <CardHeader className="pb-3 border-b border-border/40">
+              <CardTitle className="text-sm font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+                <ClipboardList size={16} /> Lista de Veículos para Impressão
+              </CardTitle>
+              <CardDescription>
+                Visualize a lista abaixo e clique em Imprimir para gerar o relatório impresso limpo.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-border/40">
+                    <TableHead className="font-semibold">Veículo (Marca/Modelo/Versão)</TableHead>
+                    <TableHead className="font-semibold">Placa</TableHead>
+                    <TableHead className="font-semibold text-center">Ano</TableHead>
+                    <TableHead className="font-semibold">Cor</TableHead>
+                    <TableHead className="font-semibold">Valor de Venda</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredPrintVehicles.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        Nenhum veículo encontrado para os filtros selecionados.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredPrintVehicles.map((v: any) => (
+                      <TableRow key={v.id} className="border-border/40 hover:bg-secondary/10">
+                        <TableCell className="font-bold text-foreground">
+                          {v.brand} {v.model} {v.version || ""}
+                        </TableCell>
+                        <TableCell className="font-mono text-foreground font-semibold uppercase">{v.plate}</TableCell>
+                        <TableCell className="text-center text-foreground">{v.year}</TableCell>
+                        <TableCell className="text-muted-foreground">{v.color || "-"}</TableCell>
+                        <TableCell className="font-bold text-emerald-400">{formatCurrency(v.value || 0)}</TableCell>
+                        <TableCell>{getStatusBadge(v.status)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
