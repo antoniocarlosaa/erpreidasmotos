@@ -796,6 +796,69 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     },
   });
 
+  // Helper for controlled currency inputs to prevent cursor jumping
+  const handleBRLChange = (name: any) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const oldSelectionStart = input.selectionStart;
+    const oldLength = input.value.length;
+    
+    const formatted = formatToBRLInput(input.value);
+    input.value = formatted;
+    
+    const isAtEnd = oldSelectionStart === oldLength;
+    const newCursorPos = isAtEnd 
+      ? formatted.length 
+      : Math.max(0, (oldSelectionStart || 0) + (formatted.length - oldLength));
+      
+    register(name).onChange(e);
+    
+    setTimeout(() => {
+      try {
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      } catch (err) {}
+    }, 0);
+  };
+
+  const handleLocalSalePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const oldSelectionStart = input.selectionStart;
+    const oldLength = input.value.length;
+    
+    const formatted = formatToBRLInput(input.value);
+    setLocalSalePrice(formatted);
+    
+    const isAtEnd = oldSelectionStart === oldLength;
+    const newCursorPos = isAtEnd 
+      ? formatted.length 
+      : Math.max(0, (oldSelectionStart || 0) + (formatted.length - oldLength));
+      
+    setTimeout(() => {
+      try {
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      } catch (err) {}
+    }, 0);
+  };
+
+  const handleCostValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const oldSelectionStart = input.selectionStart;
+    const oldLength = input.value.length;
+    
+    const formatted = formatToBRLInput(input.value);
+    setCostValue(formatted);
+    
+    const isAtEnd = oldSelectionStart === oldLength;
+    const newCursorPos = isAtEnd 
+      ? formatted.length 
+      : Math.max(0, (oldSelectionStart || 0) + (formatted.length - oldLength));
+      
+    setTimeout(() => {
+      try {
+        input.setSelectionRange(newCursorPos, newCursorPos);
+      } catch (err) {}
+    }, 0);
+  };
+
   // Watch for real-time calculations
   const watchAppraisalValue = watch("appraisal_value");
   const watchPurchaseValue = watch("purchase_value");
@@ -2276,7 +2339,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                             id="cost-sale-price"
                             type="text"
                             value={localSalePrice}
-                            onChange={(e) => setLocalSalePrice(formatToBRLInput(e.target.value))}
+                            onChange={handleLocalSalePriceChange}
                             className="bg-black/30 text-primary font-bold text-sm h-9"
                           />
                           <Button
@@ -2373,7 +2436,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                 type="text"
                                 placeholder="R$ 0,00"
                                 value={costValue}
-                                onChange={(e) => setCostValue(formatToBRLInput(e.target.value))}
+                                onChange={handleCostValueChange}
                                 className="bg-black/30 h-9 text-xs"
                                 required
                               />
@@ -3294,10 +3357,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                               type="text"
                               placeholder="0,00"
                               {...register("appraisal_value")}
-                              onChange={(e) => {
-                                e.target.value = formatToBRLInput(e.target.value);
-                                register("appraisal_value").onChange(e);
-                              }}
+                              onChange={handleBRLChange("appraisal_value")}
                               className="bg-black/40 text-emerald-400 font-bold border-emerald-500/20 focus:border-emerald-500 h-9"
                             />
                             <p className="text-[9px] text-muted-foreground">
@@ -3343,10 +3403,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                       type="text"
                                       placeholder="0,00"
                                       {...register("fines_value")}
-                                      onChange={(e) => {
-                                        e.target.value = formatToBRLInput(e.target.value);
-                                        register("fines_value").onChange(e);
-                                      }}
+                                      onChange={handleBRLChange("fines_value")}
                                       className="bg-black/40 h-7 text-xs border-zinc-800"
                                     />
                                   </div>
@@ -3378,10 +3435,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                       type="text"
                                       placeholder="0,00"
                                       {...register("ipva_value")}
-                                      onChange={(e) => {
-                                        e.target.value = formatToBRLInput(e.target.value);
-                                        register("ipva_value").onChange(e);
-                                      }}
+                                      onChange={handleBRLChange("ipva_value")}
                                       className="bg-black/40 h-7 text-xs border-zinc-800"
                                     />
                                   </div>
@@ -3450,10 +3504,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                         type="text"
                                         placeholder="0,00"
                                         {...register("financing_payout")}
-                                        onChange={(e) => {
-                                          e.target.value = formatToBRLInput(e.target.value);
-                                          register("financing_payout").onChange(e);
-                                        }}
+                                        onChange={handleBRLChange("financing_payout")}
                                         className="bg-black/40 h-6 text-xs border-zinc-800"
                                       />
                                     </div>
@@ -3487,10 +3538,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                       type="text"
                                       placeholder="0,00"
                                       {...register("notary_costs")}
-                                      onChange={(e) => {
-                                        e.target.value = formatToBRLInput(e.target.value);
-                                        register("notary_costs").onChange(e);
-                                      }}
+                                      onChange={handleBRLChange("notary_costs")}
                                       className="bg-black/40 h-7 text-xs border-zinc-800"
                                     />
                                   </div>
@@ -3541,10 +3589,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                           type="text"
                                           placeholder="0,00"
                                           {...register("broker_commission")}
-                                          onChange={(e) => {
-                                            e.target.value = formatToBRLInput(e.target.value);
-                                            register("broker_commission").onChange(e);
-                                          }}
+                                          onChange={handleBRLChange("broker_commission")}
                                           className="bg-black/40 h-7 text-xs text-primary font-semibold border-zinc-800"
                                         />
                                       </div>
@@ -3564,10 +3609,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                       type="text"
                                       placeholder="0,00"
                                       {...register("power_value")}
-                                      onChange={(e) => {
-                                        e.target.value = formatToBRLInput(e.target.value);
-                                        register("power_value").onChange(e);
-                                      }}
+                                      onChange={handleBRLChange("power_value")}
                                       className="bg-black/40 h-7 text-xs text-primary border-zinc-800"
                                     />
                                     <p className="text-[9px] text-muted-foreground">Valor cobrado pela procuração que será descontado do cliente.</p>
@@ -3592,10 +3634,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                   type="text"
                                   placeholder="0,00"
                                   {...register("dispatch_fee")}
-                                  onChange={(e) => {
-                                    e.target.value = formatToBRLInput(e.target.value);
-                                    register("dispatch_fee").onChange(e);
-                                  }}
+                                  onChange={handleBRLChange("dispatch_fee")}
                                   className="bg-black/40 h-7 text-xs border-zinc-800"
                                 />
                               </Card>
@@ -3608,10 +3647,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                   type="text"
                                   placeholder="0,00"
                                   {...register("sale_intention_fee")}
-                                  onChange={(e) => {
-                                    e.target.value = formatToBRLInput(e.target.value);
-                                    register("sale_intention_fee").onChange(e);
-                                  }}
+                                  onChange={handleBRLChange("sale_intention_fee")}
                                   className="bg-black/40 h-7 text-xs border-zinc-800"
                                 />
                               </Card>
@@ -3624,10 +3660,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                   type="text"
                                   placeholder="0,00"
                                   {...register("registration_fee")}
-                                  onChange={(e) => {
-                                    e.target.value = formatToBRLInput(e.target.value);
-                                    register("registration_fee").onChange(e);
-                                  }}
+                                  onChange={handleBRLChange("registration_fee")}
                                   className="bg-black/40 h-7 text-xs border-zinc-800"
                                 />
                               </Card>
@@ -3640,10 +3673,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                   type="text"
                                   placeholder="0,00"
                                   {...register("transfer_fee")}
-                                  onChange={(e) => {
-                                    e.target.value = formatToBRLInput(e.target.value);
-                                    register("transfer_fee").onChange(e);
-                                  }}
+                                  onChange={handleBRLChange("transfer_fee")}
                                   className="bg-black/40 h-7 text-xs border-zinc-800"
                                 />
                               </Card>
@@ -3656,10 +3686,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                   type="text"
                                   placeholder="0,00"
                                   {...register("cancellation_fee")}
-                                  onChange={(e) => {
-                                    e.target.value = formatToBRLInput(e.target.value);
-                                    register("cancellation_fee").onChange(e);
-                                  }}
+                                  onChange={handleBRLChange("cancellation_fee")}
                                   className="bg-black/40 h-7 text-xs border-zinc-800"
                                 />
                               </Card>
@@ -3686,10 +3713,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                               type="text"
                               placeholder="0,00"
                               {...register("value")}
-                              onChange={(e) => {
-                                e.target.value = formatToBRLInput(e.target.value);
-                                register("value").onChange(e);
-                              }}
+                              onChange={handleBRLChange("value")}
                               className="bg-black/40 text-teal-400 font-bold border-teal-500/20 focus:border-teal-500 h-9"
                             />
                             <p className="text-[9px] text-muted-foreground">
@@ -3706,10 +3730,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                               type="text"
                               placeholder="0,00"
                               {...register("consignation_owner_value")}
-                              onChange={(e) => {
-                                e.target.value = formatToBRLInput(e.target.value);
-                                register("consignation_owner_value").onChange(e);
-                              }}
+                              onChange={handleBRLChange("consignation_owner_value")}
                               className="bg-black/40 text-teal-400 font-bold border-teal-500/20 focus:border-teal-500 h-9"
                             />
                             <p className="text-[9px] text-muted-foreground">
@@ -3814,10 +3835,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                             type="text"
                             placeholder="0,00"
                             {...register("value")}
-                            onChange={(e) => {
-                              e.target.value = formatToBRLInput(e.target.value);
-                              register("value").onChange(e);
-                            }}
+                            onChange={handleBRLChange("value")}
                             className="bg-black/40 text-primary font-bold border-primary/20 focus:border-primary h-9"
                           />
                           <p className="text-[9px] text-muted-foreground">Preço de comercialização definido para este veículo.</p>
