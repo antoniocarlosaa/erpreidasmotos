@@ -402,7 +402,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       const payload: any = {
         ...vals,
         custom_clauses: customClauses,
-        status: "AGUARDANDO_INICIAR",
+        status: vals.modality === "compra" ? "TRANSFERÊNCIA_CONCLUÍDA" : "AGUARDANDO_INICIAR",
       };
 
       if (vals.modality === "vista" || vals.modality === "repasse") {

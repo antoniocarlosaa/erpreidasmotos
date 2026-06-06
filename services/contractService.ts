@@ -36,7 +36,7 @@ export const contractService = {
     if (contractData.modality === "compra") {
       const createdContract = await contractRepository.create(supabase, {
         ...contractData,
-        status: "AGUARDANDO_INICIAR", // Inicializa como Aguardando Iniciar
+        status: "TRANSFERÊNCIA_CONCLUÍDA", // Inicializa como Concluído
       });
       if (!createdContract) throw new Error("Falha ao cadastrar o contrato de compra.");
 

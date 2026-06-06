@@ -182,14 +182,17 @@ export async function getDashboardData() {
   const allContracts = contracts || [];
   const allVehicles = vehicles || [];
   const entries = (financialEntries || []).filter(
-    (entry: any) => !entry.contract_id || activeContractIds.includes(entry.contract_id)
+    (entry: any) => {
+      if (!entry.contract_id) return true;
+      const contract = allContracts.find((c: any) => c.id === entry.contract_id);
+      return contract ? contract.status !== "TRANSFERÊNCIA_CANCELADA" : true;
+    }
   );
 
   const soldContracts = allContracts.filter(
     (c: any) => 
-      c.status !== "AGUARDANDO_COMPRADOR_FINALIZAR" && 
-      c.status !== "AGUARDANDO_VENDEDOR" && 
-      c.status !== "AGUARDANDO_INICIAR"
+      c.modality !== "compra" && 
+      c.status !== "TRANSFERÊNCIA_CANCELADA"
   );
 
   const totalSold = soldContracts.reduce((sum, c: any) => sum + Number(c.total_value), 0);

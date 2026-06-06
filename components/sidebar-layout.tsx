@@ -241,10 +241,10 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
           <Link href="/dashboard" className="flex items-center gap-2">
             <div className="flex flex-col">
               <span className="text-xs font-bold tracking-tight bg-gradient-to-r from-primary to-cyan-400 bg-clip-text text-transparent uppercase leading-tight">
-                Gerenciador de Contratos
+                MEU ESTOQUE V1.9
               </span>
-              <span className="text-[9px] font-semibold text-muted-foreground leading-tight">
-                e Transferências
+              <span className="text-[8px] font-semibold text-muted-foreground leading-tight uppercase tracking-wider">
+                Gerenciador de Estoque
               </span>
             </div>
           </Link>
@@ -387,10 +387,18 @@ export function SidebarLayout({ children, userProfile }: SidebarLayoutProps) {
         </header>
 
         {/* Content Body */}
-        <main className="flex-1 overflow-auto p-6 md:p-8 bg-background">
-          <div className="mx-auto max-w-7xl space-y-6">
+        <main className="flex-1 overflow-auto p-6 md:p-8 bg-background flex flex-col justify-between">
+          <div className="mx-auto max-w-7xl space-y-6 w-full flex-grow">
             {children}
           </div>
+          <footer className="mt-12 border-t border-border/20 pt-4 pb-2 text-center text-[10px] text-muted-foreground/45 font-medium w-full">
+            <p className="font-semibold tracking-wider text-muted-foreground/60 uppercase">
+              MEU ESTOQUE V1.9 (GERENCIADOR DE ESTOQUE, VENDAS E POS VENDA)
+            </p>
+            <p className="mt-0.5">
+              CRIADOR ANTONIO CARLOS &bull; CONTATO: 98 98148-9667 &bull; EMAIL: ANTONIOCARLOSAANDRADE@GMAIL.COM
+            </p>
+          </footer>
         </main>
       </div>
     </div>

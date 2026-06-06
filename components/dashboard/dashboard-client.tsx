@@ -250,7 +250,7 @@ export function DashboardClient({ data, userRole, companyPermissions }: Dashboar
                       contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                       labelStyle={{ color: "#a1a1aa", fontWeight: "bold" }}
                     />
-                    <Area type="monotone" dataKey="valor" stroke="var(--primary)" fillOpacity={1} fill="url(#colorSales)" strokeWidth={2} />
+                    <Area type="monotone" dataKey="valor" stroke="var(--primary)" fillOpacity={1} fill="url(#colorSales)" strokeWidth={1.5} />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -285,8 +285,8 @@ export function DashboardClient({ data, userRole, companyPermissions }: Dashboar
                       contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                     />
                     <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="receitas" fill="#10b981" radius={[4, 4, 0, 0]} name="Receitas" />
-                    <Bar dataKey="despesas" fill="#ef4444" radius={[4, 4, 0, 0]} name="Despesas" />
+                    <Bar dataKey="receitas" fill="#10b981" radius={[4, 4, 0, 0]} barSize={12} name="Receitas" />
+                    <Bar dataKey="despesas" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={12} name="Despesas" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -317,7 +317,7 @@ export function DashboardClient({ data, userRole, companyPermissions }: Dashboar
                       formatter={(value) => [formatBRL(Number(value)), "A Receber"]}
                       contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                     />
-                    <Line type="monotone" dataKey="valor" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Projeção" />
+                    <Line type="monotone" dataKey="valor" stroke="#06b6d4" strokeWidth={1.5} dot={{ r: 3 }} activeDot={{ r: 5 }} name="Projeção" />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -422,7 +422,7 @@ export function DashboardClient({ data, userRole, companyPermissions }: Dashboar
                     formatter={(value) => [`${value} trocas`, "Total"]}
                     contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                   />
-                  <Bar dataKey="value" fill="#f59e0b" radius={[3, 3, 0, 0]}>
+                  <Bar dataKey="value" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={12}>
                     {charts.chartReviews.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={REVIEW_COLORS[index % REVIEW_COLORS.length]} />
                     ))}

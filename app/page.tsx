@@ -121,12 +121,11 @@ export default function LoginPage() {
         <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 text-primary">
           <Car size={28} className="animate-pulse" />
         </div>
-        <h1 className="text-2xl font-extrabold tracking-wider bg-gradient-to-r from-primary via-cyan-400 to-indigo-400 bg-clip-text text-transparent text-center uppercase leading-tight">
-          Gerenciador de Contratos
-          <span className="block text-lg font-bold text-muted-foreground mt-1">e Transferências</span>
+        <h1 className="text-3xl font-black tracking-wider bg-gradient-to-r from-primary via-cyan-400 to-indigo-400 bg-clip-text text-transparent text-center uppercase leading-tight font-sans">
+          MEU ESTOQUE V1.9
         </h1>
-        <p className="text-xs text-muted-foreground font-medium text-center max-w-sm mt-1">
-          Gestão Inteligente de Vendas, Contratos e Pós-Venda de Veículos
+        <p className="text-[10px] font-bold tracking-widest text-muted-foreground/80 text-center uppercase max-w-md mt-1">
+          GERENCIADOR DE ESTOQUE, VENDAS E POS VENDA
         </p>
       </div>
 
@@ -321,6 +320,16 @@ export default function LoginPage() {
             </Card>
           </TabsContent>
         </Tabs>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-12 text-center text-[10px] text-muted-foreground/45 font-medium z-10 space-y-1">
+        <p className="font-semibold tracking-wider text-muted-foreground/60 uppercase">
+          MEU ESTOQUE V1.9 (GERENCIADOR DE ESTOQUE, VENDAS E POS VENDA)
+        </p>
+        <p>
+          CRIADOR ANTONIO CARLOS &bull; CONTATO: 98 98148-9667 &bull; EMAIL: ANTONIOCARLOSAANDRADE@GMAIL.COM
+        </p>
       </div>
     </div>
   );

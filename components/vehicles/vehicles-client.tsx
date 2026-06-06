@@ -1240,7 +1240,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
               appraised_value: parseNumberField(values.appraisal_value),
               net_value: calculatedNetClientValue,
               purchase_date: values.entry_date || new Date().toISOString().split("T")[0],
-              status: "AGUARDANDO_INICIAR",
+              status: "TRANSFERÊNCIA_CONCLUÍDA",
               notes: "Contrato de compra gerado automaticamente no cadastro do veículo. O veículo será transferido para o novo cliente comprador assim que a revenda for realizada.",
               custom_clauses: [
                 "Fica expressamente acordado que a transferência de propriedade do veículo ora adquirido pela LOJA para seu nome ou de terceiros ocorrerá exclusivamente no momento da revenda do bem para um novo cliente comprador final."
@@ -2726,7 +2726,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         formatter={(value) => [formatCurrency(Number(value)), "Lucro Potencial"]}
                         contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                       />
-                      <Bar dataKey="Lucro Potencial" fill="#00f0ff" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Lucro Potencial" fill="#00f0ff" radius={[4, 4, 0, 0]} barSize={12} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -2759,7 +2759,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         formatter={(value) => [formatCurrency(Number(value)), "Lucro Total"]}
                         contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                       />
-                      <Bar dataKey="profit" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="profit" fill="#a855f7" radius={[4, 4, 0, 0]} barSize={12} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -2832,7 +2832,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                         formatter={(value) => [formatCurrency(Number(value)), "Custo Lançado"]}
                         contentStyle={{ backgroundColor: "#0c111d", borderColor: "#27272a" }}
                       />
-                      <Bar dataKey="Custo de Manutenção" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Custo de Manutenção" fill="#f43f5e" radius={[4, 4, 0, 0]} barSize={12} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
