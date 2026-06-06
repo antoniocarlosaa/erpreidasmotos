@@ -35,6 +35,7 @@ import {
   ShieldCheck,
   RotateCcw,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import { formatCurrency, formatMileage } from "@/utils/formatters";
 import { formatCPF } from "@/utils/validators";
@@ -638,6 +639,354 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       })
       .join("\n");
     alert(`Por favor, corrija os erros de validação antes de gerar a proposta:\n\n${messages}`);
+  };
+
+  // CRLV PDF and QR Code reader states and functions
+  const [isReadingCRLV, setIsReadingCRLV] = useState(false);
+
+  const loadScript = (url: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${url}"]`)) {
+        resolve();
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = url;
+      script.onload = () => resolve();
+      script.onerror = (err) => reject(err);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleCRLVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsReadingCRLV(true);
+    try {
+      if (file.type === "application/pdf") {
+        await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+        // @ts-ignore
+        const pdfjsLib = window["pdfjs-dist/build/pdf"];
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = "";
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item: any) => item.str).join(" ");
+          fullText += pageText + "\n";
+        }
+
+        parseAndFillCRLVText(fullText);
+      } else if (file.type.startsWith("image/")) {
+        await loadScript("https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js");
+        
+        const image = new Image();
+        const reader = new FileReader();
+
+        reader.onload = (event) => {
+          image.src = event.target?.result as string;
+        };
+
+        image.onload = () => {
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) {
+            alert("Não foi possível inicializar o canvas para leitura do QR Code.");
+            setIsReadingCRLV(false);
+            return;
+          }
+
+          canvas.width = image.width;
+          canvas.height = image.height;
+          context.drawImage(image, 0, 0, image.width, image.height);
+
+          const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+          // @ts-ignore
+          const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+
+          if (code) {
+            parseAndFillCRLVUrl(code.data);
+          } else {
+            alert("Nenhum QR Code legível foi detectado na imagem. Tente uma foto mais nítida ou focada apenas no QR Code.");
+          }
+          setIsReadingCRLV(false);
+        };
+
+        reader.readAsDataURL(file);
+      } else {
+        alert("Formato de arquivo não suportado. Por favor, envie um PDF do CRLV ou uma imagem do QR Code.");
+        setIsReadingCRLV(false);
+      }
+    } catch (err: any) {
+      console.error("Erro ao ler CRLV:", err);
+      alert("Erro ao ler o documento CRLV: " + (err.message || err));
+      setIsReadingCRLV(false);
+    }
+  };
+
+  const parseAndFillCRLVText = (text: string) => {
+    const textUpper = text.toUpperCase();
+
+    const cleanOwnerName = (rawName: string): string => {
+      let name = rawName.toUpperCase().replace(/\s+/g, " ").trim();
+      
+      const prefixesToRemove = [
+        /^P\b/,
+        /^N[AÃ]O APLIC[AÁ]VEL\b/,
+        /^NAO APLICAVEL\b/,
+        /^APLIC[AÁ]VEL\b/,
+        /^CABINE\b/,
+        /^DUPLA\b/,
+        /^ABERTA\b/,
+        /^FECHADA\b/,
+        /^PASSAGEIRO\b/,
+        /^MOTOCICLO\b/,
+        /^MOTOCICLETA\b/,
+        /^MOTOCICL\b/,
+        /^ESPECIAL\b/,
+        /^CAMINHONETE\b/,
+        /^CAMIONETA\b/,
+        /^AUTOMOVEL\b/,
+        /^CIONETA\b/,
+      ];
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        name = name.trim();
+        for (const prefix of prefixesToRemove) {
+          const newName = name.replace(prefix, "").trim();
+          if (newName !== name) {
+            name = newName;
+            changed = true;
+          }
+        }
+      }
+
+      return name;
+    };
+    
+    // 1. Placa
+    const plateRegex = /PLACA\s*:?\s*([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})/i;
+    let plate = textUpper.match(plateRegex)?.[1] || "";
+    if (!plate) {
+      const genericPlateRegex = /\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/i;
+      plate = textUpper.match(genericPlateRegex)?.[1] || "";
+    }
+    
+    // 2. Renavam
+    const renavamRegex = /RENAVAM\s*:?\s*(\d{11})/i;
+    let renavam = textUpper.match(renavamRegex)?.[1] || "";
+    if (!renavam) {
+      const genericRenavamRegex = /\b(\d{11})\b/;
+      renavam = textUpper.match(genericRenavamRegex)?.[1] || "";
+    }
+
+    // 3. Chassi e Cor Predominante
+    const chassisColorFuelRegex = /\b([A-HJ-NPR-Z0-9]{17})\s+([A-Z]{3,})\s+([A-Z\/]+)\s+(PARTICULAR|OFICIAL|CONVENIO|ALUGUEL|APRENDIZAGEM|REPRESENTACAO|DIPLOMATICO|COLECIONADOR)\b/i;
+    const ccMatch = textUpper.match(chassisColorFuelRegex);
+    
+    let chassis = "";
+    let color = "";
+    if (ccMatch) {
+      chassis = ccMatch[1];
+      color = ccMatch[2].trim().toLowerCase();
+    } else {
+      const chassisRegex = /CHASSI\s*:?\s*([A-HJ-NPR-Z0-9]{17})/i;
+      chassis = textUpper.match(chassisRegex)?.[1] || "";
+      if (!chassis) {
+        const genericChassisRegex = /\b([A-HJ-NPR-Z0-9]{17})\b/i;
+        chassis = textUpper.match(genericChassisRegex)?.[1] || "";
+      }
+      
+      const colorRegex = /COR\s*(?:PREDOMINANTE)?\s*:?\s*([A-Z]{3,})(?=\s{2,}|\n|$)/i;
+      color = textUpper.match(colorRegex)?.[1]?.trim().toLowerCase() || "";
+    }
+
+    // 4. Marca/Modelo
+    const brandModelRegex = /(?:\*{3}|VIA:?\s*\*{3})\s+([A-Z0-9\s\-\/\.]+?)\s+(PASSAGEIRO MOTOCICLETA|PASSAGEIRO MOTOCICLO|PASSAGEIRO MOTONETA|CAMINHONETE|CAMIONETA|AUTOM[OÓ]VEL|PASSAGEIRO AUTOM[OÓ]VEL|CAMINH[AÃ]O|UTILIT[AÁ]RIO|CARGA|PASSAGEIRO|MISTO)\s+([A-Z0-9*]{7}\/[A-Z*]{2})/i;
+    const bmMatch = textUpper.match(brandModelRegex);
+    
+    let brand = "";
+    let model = "";
+    if (bmMatch) {
+      const brandModelRaw = bmMatch[1].trim();
+      const cleanBrandModel = brandModelRaw.replace(/\s+/g, " ").trim();
+      if (cleanBrandModel.includes("/")) {
+        const parts = cleanBrandModel.split("/");
+        const firstPart = parts[0].trim();
+        
+        if (firstPart === "I" && parts.length > 1) {
+          const secondPart = parts.slice(1).join("/").trim();
+          const spaceIndex = secondPart.indexOf(" ");
+          if (spaceIndex !== -1) {
+            brand = "I/" + secondPart.substring(0, spaceIndex).trim();
+            model = secondPart.substring(spaceIndex).trim();
+          } else {
+            brand = "I/" + secondPart;
+            model = secondPart;
+          }
+        } else {
+          brand = firstPart;
+          model = parts.slice(1).join("/").trim();
+        }
+      } else {
+        const spaceIndex = cleanBrandModel.indexOf(" ");
+        if (spaceIndex !== -1) {
+          brand = cleanBrandModel.substring(0, spaceIndex).trim();
+          model = cleanBrandModel.substring(spaceIndex).trim();
+        } else {
+          brand = cleanBrandModel;
+          model = cleanBrandModel;
+        }
+      }
+    } else {
+      const modelRegex = /MARCA\s*[\/\-]?\s*MODELO\s*:?\s*([A-Z0-9\s\-\/]+?)(?=\s{2,}|[A-Z]+:|\n|$)/i;
+      let brandModel = textUpper.match(modelRegex)?.[1]?.trim() || "";
+      if (brandModel) {
+        if (brandModel.includes("/")) {
+          const parts = brandModel.split("/");
+          brand = parts[0].trim();
+          model = parts.slice(1).join("/").trim();
+        } else {
+          const parts = brandModel.split(/\s+/);
+          brand = parts[0].trim();
+          model = parts.slice(1).join(" ").trim();
+        }
+      }
+    }
+
+    // 5. Ano Modelo
+    const yearsRegex = /([A-Z0-9]{7})\s+(\d{4})\s+(\d{4})\s+(\d{4})/i;
+    const yearsMatch = textUpper.match(yearsRegex);
+    let year = new Date().getFullYear();
+    if (yearsMatch) {
+      year = parseInt(yearsMatch[4]);
+    } else {
+      const yearRegex = /ANO\s+MOD(?:ELO)?\s*:?\s*(\d{4})/i;
+      let yearStr = textUpper.match(yearRegex)?.[1] || "";
+      if (!yearStr) {
+        const yearFabrModRegex = /(\d{4})\s*\/\s*(\d{4})/;
+        const match = textUpper.match(yearFabrModRegex);
+        if (match) {
+          yearStr = match[2];
+        }
+      }
+      if (yearStr) year = parseInt(yearStr);
+    }
+
+    // 6. Proprietário e CPF
+    const cpfCnpjRegex = /\b(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2})\b/;
+    const cpfMatch = textUpper.match(cpfCnpjRegex);
+    let ownerCpf = "";
+    let ownerName = "";
+    
+    if (cpfMatch) {
+      ownerCpf = cpfMatch[1].replace(/\D/g, "");
+      const cpfIndex = textUpper.indexOf(cpfMatch[1]);
+      if (cpfIndex !== -1) {
+        const beforeCpf = textUpper.substring(0, cpfIndex).trim();
+        const nameMatch = beforeCpf.match(/([A-ZÃÕÁÉÍÓÚÇ\s]+)$/i);
+        if (nameMatch) {
+          ownerName = cleanOwnerName(nameMatch[1]);
+        }
+      }
+    }
+
+    // Preencher campos de troca
+    if (plate) setTradePlate(plate.replace("-", "").toUpperCase());
+    if (renavam) setTradeRenavam(renavam);
+    if (chassis) setTradeChassis(chassis.toUpperCase());
+    if (brand && model) {
+      setTradeBrandModel(`${brand} ${model}`);
+    } else if (brand) {
+      setTradeBrandModel(brand);
+    }
+    if (year) setTradeYear(year);
+    if (color) {
+      setTradeColor(color.charAt(0).toUpperCase() + color.slice(1));
+    }
+    if (ownerName) setValue("former_owner_name", ownerName);
+    if (ownerCpf) setValue("former_owner_cpf", ownerCpf);
+
+    // Auto-detect category
+    const isMoto = textUpper.includes("MOTOCICLO") || 
+                   textUpper.includes("MOTOCICLETA") || 
+                   textUpper.includes("MOTONETA") || 
+                   textUpper.includes("CICLOMOTOR") ||
+                   textUpper.includes("HONDA/") || 
+                   textUpper.includes("YAMAHA/") ||
+                   /\b(MOTO|MOTOCICLETA|MOTOCICLO|MOTONETA)\b/.test(textUpper);
+
+    const isCarro = textUpper.includes("AUTOMOVEL") || 
+                    textUpper.includes("AUTOMÓVEL") || 
+                    textUpper.includes("CAMINHONETE") || 
+                    textUpper.includes("CAMIONETA") || 
+                    textUpper.includes("UTILITARIO") || 
+                    textUpper.includes("UTILITÁRIO") ||
+                    /\b(CARRO|AUTOMOVEL|AUTOMÓVEL|CAMIONETA|CAMINHONETE)\b/.test(textUpper);
+
+    if (isMoto) {
+      setTradeCategory("moto");
+    } else if (isCarro) {
+      setTradeCategory("carro");
+    } else {
+      setTradeCategory("moto"); // default para moto
+    }
+
+    setIsReadingCRLV(false);
+    alert(`CRLV do Veículo da Troca lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}\n- Proprietário Anterior: ${ownerName || "Não encontrado"}\n- CPF/CNPJ: ${ownerCpf || "Não encontrado"}`);
+  };
+
+  const parseAndFillCRLVUrl = (urlText: string) => {
+    try {
+      const urlLower = urlText.toLowerCase();
+      
+      let plate = "";
+      let renavam = "";
+      let chassis = "";
+
+      if (urlLower.includes("chassi=") || urlLower.includes("renavam=")) {
+        const urlObj = new URL(urlText);
+        plate = urlObj.searchParams.get("placa") || "";
+        renavam = urlObj.searchParams.get("renavam") || "";
+        chassis = urlObj.searchParams.get("chassi") || "";
+      } else {
+        plate = urlText.match(/placa=([a-z0-9]+)/i)?.[1] || "";
+        renavam = urlText.match(/renavam=(\d+)/i)?.[1] || "";
+        chassis = urlText.match(/chassi=([a-z0-9]+)/i)?.[1] || "";
+      }
+
+      if (plate) setTradePlate(plate.toUpperCase());
+      if (renavam) setTradeRenavam(renavam);
+      if (chassis) setTradeChassis(chassis.toUpperCase());
+
+      if (plate || renavam || chassis) {
+        alert(`QR Code do CRLV lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate.toUpperCase() || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis.toUpperCase() || "Não encontrado"}\n\nNota: Fotos de QR Code preenchem os códigos de identificação. Para extrair marca, modelo e cor, anexe o PDF do documento completo.`);
+      } else {
+        alert("O QR Code foi lido, mas não contém parâmetros conhecidos de CRLV (Placa, Renavam ou Chassi). Conteúdo lido:\n\n" + urlText);
+      }
+    } catch (err) {
+      console.warn("Erro ao parsear URL do QR Code:", err);
+      const plate = urlText.match(/\b([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})\b/i)?.[1] || "";
+      const renavam = urlText.match(/\b(\d{11})\b/)?.[1] || "";
+      const chassis = urlText.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)?.[1] || "";
+
+      if (plate) setTradePlate(plate.replace("-", "").toUpperCase());
+      if (renavam) setTradeRenavam(renavam);
+      if (chassis) setTradeChassis(chassis.toUpperCase());
+
+      if (plate || renavam || chassis) {
+        alert(`QR Code lido via reconhecimento de texto!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}`);
+      } else {
+        alert("O QR Code lido não continha informações de veículo válidas.\nConteúdo lido: " + urlText);
+      }
+    }
   };
 
   const handleNextStep = () => {
@@ -1378,6 +1727,40 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                   <h4 className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
                     🚗 Veículo Recebido na Troca (Entrada)
                   </h4>
+
+                  <div className="p-4 bg-secondary/15 rounded-lg border border-border/40 text-xs space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h5 className="font-bold text-primary uppercase flex items-center gap-1.5 text-xs">
+                          <FileCheck size={14} /> Importar CRLV do Veículo da Troca (Preenchimento Automático)
+                        </h5>
+                        <p className="text-[10px] text-muted-foreground">Arraste o PDF do CRLV ou a imagem do QR Code para preencher os dados do veículo de troca automaticamente.</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="relative border-2 border-dashed border-border/30 rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col items-center justify-center min-h-[90px] cursor-pointer">
+                        <Input
+                          type="file"
+                          accept="application/pdf,image/*"
+                          onChange={handleCRLVImport}
+                          disabled={isReadingCRLV}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                        <Upload size={24} className="text-muted-foreground mb-1" />
+                        <span className="font-bold text-[11px] text-muted-foreground text-center">
+                          {isReadingCRLV ? "Processando documento..." : "Anexar PDF do CRLV ou Imagem do QR Code"}
+                        </span>
+                      </div>
+                      
+                      <div className="text-[10px] text-muted-foreground bg-black/20 p-2.5 rounded border border-border/20 flex flex-col justify-center">
+                        <p className="font-semibold text-primary mb-1">Como funciona:</p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                          <li><strong>PDF do CRLV:</strong> Lê o texto do documento e extrai Categoria (Moto/Carro), Marca/Modelo, Placa, Renavam, Chassi, Ano, Cor e dados do proprietário anterior (Nome/CPF).</li>
+                          <li><strong>Imagem do QR Code:</strong> Escaneia o QR Code do documento, decodifica a URL e puxa Placa, Renavam e Chassi.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div className="space-y-1.5 text-xs col-span-2 sm:col-span-1">
