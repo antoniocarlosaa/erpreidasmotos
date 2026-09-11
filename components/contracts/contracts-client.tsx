@@ -55,7 +55,7 @@ export const CONTRACT_STATUS_DETAILS: Record<
   { label: string; bg: string; text: string; border: string }
 > = {
   AGUARDANDO_INICIAR: {
-    label: "Aguardando Iniciar",
+    label: "Aguardando Loja Iniciar",
     bg: "bg-blue-500/10",
     text: "text-blue-400",
     border: "border-blue-500/20",

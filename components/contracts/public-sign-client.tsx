@@ -126,6 +126,7 @@ export function PublicSignClient({ contract, initialSignatures }: PublicSignClie
   };
 
   const isClientSigned = contract.modality === "compra" ? sellerSignature : buyerSignature;
+  const clientSignature = contract.modality === "compra" ? sellerSignature : buyerSignature;
 
   // Se já assinou agora ou se a assinatura já constava no banco
   if (signedSuccessfully || isClientSigned) {
@@ -149,11 +150,11 @@ export function PublicSignClient({ contract, initialSignatures }: PublicSignClie
             <p><span className="text-muted-foreground">Documento:</span> Contrato de Venda #{contract.contract_number}</p>
             <p><span className="text-muted-foreground">Comprador:</span> {contract.client?.name}</p>
             <p><span className="text-muted-foreground">CPF:</span> {contract.client?.cpf ? formatCPF(contract.client.cpf) : "N/A"}</p>
-            {buyerSignature && (
+            {clientSignature && (
               <>
-                <p><span className="text-muted-foreground">IP Registrado:</span> {buyerSignature.ip_address}</p>
-                <p><span className="text-muted-foreground">Assinado em:</span> {formatDateTime(buyerSignature.signed_at)}</p>
-                {buyerSignature.location && <p><span className="text-muted-foreground">Localização:</span> {buyerSignature.location}</p>}
+                <p><span className="text-muted-foreground">IP Registrado:</span> {clientSignature.ip_address}</p>
+                <p><span className="text-muted-foreground">Assinado em:</span> {formatDateTime(clientSignature.signed_at)}</p>
+                {clientSignature.location && <p><span className="text-muted-foreground">Localização:</span> {clientSignature.location}</p>}
               </>
             )}
           </div>

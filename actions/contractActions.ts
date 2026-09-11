@@ -288,10 +288,36 @@ export async function deleteContract(id: string) {
 
 export async function getContractSignatures(contractId: string) {
   try {
+    const contract = await contractService.getById(db, contractId);
     const snap = await db.collection("signatures")
       .where("contract_id", "==", contractId)
       .get();
-    return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Signature);
+    const signatures = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Signature);
+
+    // A assinatura padrão da loja fica salva em companies, então ela precisa
+    // ser apresentada como a assinatura do representante no contrato.
+    if (contract?.company_id) {
+      const companyDoc = await db.collection("companies").doc(contract.company_id).get();
+      const adminSignature = companyDoc.data()?.admin_signature;
+      const storeRole = contract.modality === "compra" || contract.modality === "consignado"
+        ? "comprador"
+        : "vendedor";
+
+      if (adminSignature && !signatures.some((signature) => signature.role === storeRole)) {
+        signatures.push({
+          id: `company-signature-${contract.company_id}`,
+          contract_id: contractId,
+          role: storeRole,
+          signature_data: adminSignature,
+          ip_address: "CONFIGURACOES_DA_EMPRESA",
+          user_agent: "Assinatura padrão da empresa",
+          location: "Configurações da empresa",
+          signed_at: companyDoc.data()?.updated_at || new Date().toISOString(),
+        } as Signature);
+      }
+    }
+
+    return signatures;
   } catch (error) {
     console.error("Error fetching signatures in action:", error);
     return [];
@@ -569,6 +595,31 @@ export async function signPublicContract(params: {
   if (!contract) throw new Error("Contrato não encontrado.");
 
   const role = (contract.modality === "compra" || contract.modality === "consignado") ? "vendedor" : "comprador";
+
+  // Garante que a assinatura padrão da loja também participe da validação
+  // das duas partes, sem exigir que o administrador desenhe novamente.
+  if (contract.company_id) {
+    const companyDoc = await db.collection("companies").doc(contract.company_id).get();
+    const adminSignature = companyDoc.data()?.admin_signature;
+    const storeRole = role === "comprador" ? "vendedor" : "comprador";
+    const existingStoreSignature = await db.collection("signatures")
+      .where("contract_id", "==", params.contract_id)
+      .where("role", "==", storeRole)
+      .limit(1)
+      .get();
+
+    if (adminSignature && existingStoreSignature.empty) {
+      await db.collection("signatures").add({
+        contract_id: params.contract_id,
+        role: storeRole,
+        signature_data: adminSignature,
+        ip_address: "CONFIGURACOES_DA_EMPRESA",
+        user_agent: "Assinatura padrão da empresa",
+        location: "Configurações da empresa",
+        signed_at: new Date().toISOString(),
+      });
+    }
+  }
 
   const signature = await contractService.registerSignature(db, {
     ...params,
