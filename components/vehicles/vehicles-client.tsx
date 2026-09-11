@@ -254,7 +254,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("todos");
   const [statusFilter, setStatusFilter] = useState<string>("todos");
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("table");
   const [page, setPage] = useState(0);
   const limit = 12;
 

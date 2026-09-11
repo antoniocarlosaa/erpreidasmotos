@@ -3100,7 +3100,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
             )}
           </p>
 
-          <p>
+          {false && <p>
             <strong>CRONOGRAMA FINANCEIRO:</strong>
             <br />
             - Preço Total: <strong>{formatCurrency(totalValue || 0)}</strong>
@@ -3244,7 +3244,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 - Prazo Contratual de Consignação: <strong>{watch("consignation_period_days")} dias</strong>
               </>
             )}
-          </p>
+          </p>}
 
           {(modality === "compra_venda" || modality === "repasse") && watch("former_owner_name") && (
             <p>
