@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   // Obter dados estatísticos do banco
   let dashboardData;
   try {
-    dashboardData = await getDashboardData();
+    dashboardData = await getDashboardData(profile);
   } catch (error) {
     console.error("Failed to load dashboard data:", error);
     // Fallback em caso de dados vazios ou erro no banco

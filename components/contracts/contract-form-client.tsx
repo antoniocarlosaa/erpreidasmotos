@@ -49,6 +49,8 @@ const contractSchema = z.object({
   total_value: z.coerce.number().min(1, "O valor total deve ser maior que zero"),
   down_payment: z.coerce.number().min(0, "O valor do sinal não pode ser negativo"),
   installments_count: z.coerce.number().min(0, "A quantidade de parcelas não pode ser negativa"),
+  financing_installment_value: z.coerce.number().min(0, "O valor da parcela não pode ser negativo").optional().default(0),
+  financing_due_date: z.string().optional().default(""),
   interest_rate: z.coerce.number().min(0, "A taxa de juros não pode ser negativa"),
   warranty_text: z.string().min(5, "Insira um termo de garantia adequado"),
   notes: z.string().optional(),
@@ -248,6 +250,8 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
       total_value: 0,
       down_payment: 0,
       installments_count: 1,
+      financing_installment_value: 0,
+      financing_due_date: "",
       interest_rate: 0,
       warranty_text: defaultWarrantyText,
       notes: "",
@@ -273,12 +277,15 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
   const estimatedConsignationCommission = Math.max((totalValue || 0) - (consignationOwnerValue || 0), 0);
   const downPayment = watch("down_payment");
   const installmentsCount = watch("installments_count");
+  const financingInstallmentValue = watch("financing_installment_value");
+  const financingDueDate = watch("financing_due_date");
   const interestRate = watch("interest_rate");
   const deliveryKm = watch("delivery_km");
   const warrantyPeriodDays = watch("warranty_period_days");
   const warrantyType = watch("warranty_type");
   const paymentMethod = watch("payment_method");
   const hasRemainingBalance = watch("has_remaining_balance");
+  const displayedInstallmentValue = financingInstallmentValue > 0 ? financingInstallmentValue : pmtValue;
 
   const selectedClient = clients.find((c) => c.id === selectedClientId);
   const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
@@ -491,8 +498,13 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
 
       if (vals.modality === "financiada") {
         payload.interest_rate = 0; // Juros sempre 0 conforme solicitação
-        const bankName = selectedBank === "Outro" ? customBank : selectedBank;
-        payload.negotiation_agreement = `Venda Financiada pelo Banco ${bankName}. Valor financiado: R$ ${formatCurrency(vals.total_value - vals.down_payment)} em ${vals.installments_count}x.`;
+        payload.financing_bank = selectedBank;
+        payload.financing_installment_value = vals.financing_installment_value || 0;
+        payload.financing_due_date = vals.financing_due_date || "";
+        const formattedDueDate = vals.financing_due_date
+          ? new Date(vals.financing_due_date).toLocaleDateString("pt-BR", { timeZone: "UTC" })
+          : "não informada";
+        payload.negotiation_agreement = `Venda financiada pelo Banco ${selectedBank}. Valor financiado: R$ ${formatCurrency(vals.total_value - vals.down_payment)} em ${vals.installments_count}x de R$ ${formatCurrency(vals.financing_installment_value || 0)}. Primeiro vencimento: ${formattedDueDate}.`;
       }
 
       if (vals.modality === "compra_venda") {
@@ -2718,22 +2730,64 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
               {modality === "financiada" && (
                 <div className="p-4 bg-black/40 rounded-lg border border-border/40 space-y-3 mt-6">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <DollarSign size={14} /> Amortização em Tempo Real (Price)
+                    <DollarSign size={14} /> Dados do Financiamento
                   </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs pt-1">
                     <div>
                       <span className="text-muted-foreground block text-[10px]">Valor Financiado:</span>
                       <span className="font-semibold text-foreground text-sm">{formatCurrency(financedAmount)}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[10px]">Parcelamento:</span>
-                      <span className="font-semibold text-foreground text-sm">{installmentsCount}x</span>
+                      <Label htmlFor="installments_count" className="text-[10px] text-muted-foreground">Quantidade de Parcelas:</Label>
+                      <Input
+                        id="installments_count"
+                        type="number"
+                        min={1}
+                        {...register("installments_count")}
+                        className="bg-black/30 h-8 text-sm font-semibold"
+                      />
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[10px]">Valor da Parcela:</span>
-                      <span className="font-bold text-primary text-sm">{formatCurrency(pmtValue)}</span>
+                      <Label htmlFor="financing_installment_value" className="text-[10px] text-muted-foreground">Valor da Parcela:</Label>
+                      <Input
+                        id="financing_installment_value"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder={formatCurrency(pmtValue)}
+                        {...register("financing_installment_value")}
+                        className="bg-black/30 h-8 text-sm font-bold text-primary"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="financing_due_date" className="text-[10px] text-muted-foreground">Data de Vencimento:</Label>
+                      <Input
+                        id="financing_due_date"
+                        type="date"
+                        {...register("financing_due_date")}
+                        className="bg-black/30 h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Banco do Financiamento:</Label>
+                      <Select value={selectedBank} onValueChange={setSelectedBank}>
+                        <SelectTrigger className="bg-black/30 h-8 text-sm">
+                          <SelectValue placeholder="Escolha o banco" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-zinc-950 border-border/40 text-foreground">
+                          <SelectItem value="SANTANDER">Santander</SelectItem>
+                          <SelectItem value="BV">BV</SelectItem>
+                          <SelectItem value="PAN">Pan</SelectItem>
+                          <SelectItem value="BRADESCO">Bradesco</SelectItem>
+                          <SelectItem value="OMNI">Omni</SelectItem>
+                          <SelectItem value="C6">C6</SelectItem>
+                          <SelectItem value="HONDA">Honda</SelectItem>
+                          <SelectItem value="YAMAHA">Yamaha</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
+                  <p className="text-[10px] text-muted-foreground">Sugestão calculada: {installmentsCount}x de {formatCurrency(pmtValue)}. Informe o valor exato da parcela conforme o contrato bancário.</p>
                 </div>
               )}
 
@@ -2769,7 +2823,7 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 <div className="border-t border-border/20 pt-4 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div className="space-y-1.5">
-                      <Label className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Forma de Pagamento Principal</Label>
+                      <Label className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Forma de Pagamento de Entrada</Label>
                       <Select
                         value={paymentMethod}
                         onValueChange={(val) => setValue("payment_method", val as any)}
@@ -3095,9 +3149,15 @@ export function ContractFormClient({ clients, vehicles }: ContractFormClientProp
                 <br />
                 - Entrada / Sinal: <strong>{formatCurrency(downPayment || 0)}</strong>
                 <br />
-                - Financiamento: <strong>{formatCurrency(Math.max(totalValue - downPayment, 0))}</strong> parcelado em <strong>{installmentsCount}x</strong> de <strong>{formatCurrency(pmtValue)}</strong>.
+                - Financiamento: <strong>{formatCurrency(Math.max(totalValue - downPayment, 0))}</strong> parcelado em <strong>{installmentsCount}x</strong> de <strong>{formatCurrency(displayedInstallmentValue)}</strong>.
                 <br />
                 - Banco Financiador: <strong>{selectedBank === "Outro" ? customBank : selectedBank}</strong>
+                {financingDueDate && (
+                  <>
+                    <br />
+                    - Primeiro vencimento: <strong>{new Date(financingDueDate).toLocaleDateString("pt-BR", { timeZone: "UTC" })}</strong>
+                  </>
+                )}
               </>
             )}
             {modality === "compra_venda" && (

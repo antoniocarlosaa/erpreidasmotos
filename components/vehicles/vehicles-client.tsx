@@ -183,6 +183,7 @@ const vehicleSchema = z.object({
   ipva_value: z.preprocess((val) => parseNumberField(val), z.number()).optional().default(0),
   
   // Custo cartório
+  has_notary: z.boolean().default(false),
   notary_payment_type: z.enum(["cliente_paga_fora", "loja_assume", "descontar_avaliacao"]).default("cliente_paga_fora"),
   notary_discount_value: z.preprocess((val) => parseNumberField(val), z.number()).optional().default(0),
 
@@ -383,6 +384,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
   const parseAndFillCRLVText = (text: string) => {
     const textUpper = text.toUpperCase();
+    const normalizedText = textUpper.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     const cleanOwnerName = (rawName: string): string => {
       let name = rawName.toUpperCase().replace(/\s+/g, " ").trim();
@@ -563,30 +565,21 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
     
     setValue("items_delivered.crlv", true);
 
-    // Auto-detect category
-    const isMoto = textUpper.includes("MOTOCICLO") || 
-                   textUpper.includes("MOTOCICLETA") || 
-                   textUpper.includes("MOTONETA") || 
-                   textUpper.includes("CICLOMOTOR") ||
-                   textUpper.includes("HONDA/") || 
-                   textUpper.includes("YAMAHA/") ||
-                   /\b(MOTO|MOTOCICLETA|MOTOCICLO|MOTONETA)\b/.test(textUpper);
+    // O tipo/espécie do CRLV é a fonte mais confiável para distinguir moto de carro.
+    const motorcycleTerms = ["MOTOCICLETA", "MOTOCICLO", "MOTONETA", "CICLOMOTOR", "TRICICLO", "QUADRICICLO"];
+    const carTerms = ["AUTOMOVEL", "CAMINHONETE", "CAMIONETA", "UTILITARIO", "JEEP", "FURGAO", "MICRO-ONIBUS", "ONIBUS", "CAMINHAO"];
+    const typeField = normalizedText.match(/(?:ESPECIE\s*\/\s*TIPO|ESPECIE|TIPO)\s*:?\s*([^\n]+)/)?.[1] || "";
+    const hasMotorcycleType = motorcycleTerms.some((term) => normalizedText.includes(term));
+    const hasCarType = carTerms.some((term) => normalizedText.includes(term));
+    const category: VehicleCategory = hasMotorcycleType && !hasCarType
+      ? "moto"
+      : hasCarType && !hasMotorcycleType
+        ? "carro"
+        : motorcycleTerms.some((term) => typeField.includes(term))
+          ? "moto"
+          : "carro";
 
-    const isCarro = textUpper.includes("AUTOMOVEL") || 
-                    textUpper.includes("AUTOMÓVEL") || 
-                    textUpper.includes("CAMINHONETE") || 
-                    textUpper.includes("CAMIONETA") || 
-                    textUpper.includes("UTILITARIO") || 
-                    textUpper.includes("UTILITÁRIO") ||
-                    /\b(CARRO|AUTOMOVEL|AUTOMÓVEL|CAMIONETA|CAMINHONETE)\b/.test(textUpper);
-
-    if (isMoto) {
-      setValue("category", "moto");
-    } else if (isCarro) {
-      setValue("category", "carro");
-    } else {
-      setValue("category", "carro");
-    }
+    setValue("category", category, { shouldDirty: true, shouldValidate: true });
 
     setIsReadingCRLV(false);
     alert(`CRLV Lido com sucesso!\n\nDados extraídos:\n- Placa: ${plate || "Não encontrada"}\n- Renavam: ${renavam || "Não encontrado"}\n- Chassi: ${chassis || "Não encontrado"}\n- Marca: ${brand || "Não encontrada"}\n- Modelo: ${model || "Não encontrado"}\n- Ano: ${year || "Não encontrado"}\n- Cor: ${color || "Não encontrada"}\n- Proprietário: ${ownerName || "Não encontrado"}\n- CPF: ${ownerCpf || "Não encontrado"}`);
@@ -876,6 +869,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const watchPowerValue = watch("power_value");
   const watchPowerPayer = watch("power_payer");
   const watchNotaryCosts = watch("notary_costs");
+  const watchHasNotary = watch("has_notary");
   const watchNotaryPaymentType = watch("notary_payment_type");
   const watchNotaryDiscountValue = watch("notary_discount_value");
 
@@ -903,8 +897,8 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
   const numFinancing = watchHasFinancing ? parseNumberField(watchFinancingPayout) : 0;
   const numBroker = watchHasBroker ? parseNumberField(watchBrokerCommission) : 0;
   const numPower = parseNumberField(watchPowerValue); // Descontado direto
-  const numNotaryDiscount = watchNotaryPaymentType === "descontar_avaliacao" ? parseNumberField(watchNotaryCosts) : 0;
-  const numNotaryCost = (watchNotaryPaymentType === "loja_assume" || watchNotaryPaymentType === "descontar_avaliacao") ? parseNumberField(watchNotaryCosts) : 0;
+  const numNotaryDiscount = watchHasNotary && watchNotaryPaymentType === "descontar_avaliacao" ? parseNumberField(watchNotaryCosts) : 0;
+  const numNotaryCost = watchHasNotary && (watchNotaryPaymentType === "loja_assume" || watchNotaryPaymentType === "descontar_avaliacao") ? parseNumberField(watchNotaryCosts) : 0;
 
   const numDispatch = parseNumberField(watchDispatchFee);
   const numSaleIntention = parseNumberField(watchSaleIntentionFee);
@@ -942,6 +936,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
       setValue("financing_payout", 0);
       setValue("notary_payment_type", "cliente_paga_fora");
       setValue("notary_costs", 0);
+      setValue("has_notary", false);
       setValue("has_broker", false);
       setValue("broker_commission", 0);
       setValue("has_power_of_attorney", false);
@@ -1148,9 +1143,10 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
       appraisal_value: values.appraisal_value || 0,
       purchase_value: values.purchase_value || 0,
-      notary_costs: values.notary_costs || 0,
-      notary_payment_type: values.notary_payment_type,
-      notary_discount_value: values.notary_payment_type === "descontar_avaliacao" ? (values.notary_costs || 0) : 0,
+      has_notary: values.has_notary,
+      notary_costs: values.has_notary ? (values.notary_costs || 0) : 0,
+      notary_payment_type: values.has_notary ? values.notary_payment_type : "cliente_paga_fora",
+      notary_discount_value: values.has_notary && values.notary_payment_type === "descontar_avaliacao" ? (values.notary_costs || 0) : 0,
 
       dispatch_fee: values.dispatch_fee || 0,
       sale_intention_fee: values.sale_intention_fee || 0,
@@ -1327,6 +1323,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
           appraisal_value: formatToBRLInput(fullVehicle.appraisal_value || 0),
           purchase_value: formatToBRLInput(fullVehicle.purchase_value || 0),
+          has_notary: fullVehicle.has_notary || false,
           notary_costs: formatToBRLInput(fullVehicle.notary_costs || 0),
           notary_payment_type: fullVehicle.notary_payment_type || "cliente_paga_fora",
           notary_discount_value: formatToBRLInput(fullVehicle.notary_discount_value || 0),
@@ -1429,6 +1426,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
       appraisal_value: "",
       purchase_value: "",
+      has_notary: false,
       notary_costs: "",
       notary_payment_type: "cliente_paga_fora",
       notary_discount_value: "",
@@ -3142,7 +3140,7 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                   <div className="space-y-1.5">
                     <Label htmlFor="category">Categoria *</Label>
                     <Select
-                      defaultValue={selectedVehicle?.category || "carro"}
+                      value={watch("category") || selectedVehicle?.category || "carro"}
                       onValueChange={(val) => setValue("category", val as VehicleCategory)}
                     >
                       <SelectTrigger className="bg-black/30 border-border/40 text-foreground">
@@ -3541,23 +3539,47 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
 
                               {/* Custos Cartório */}
                               <Card className="bg-black/35 border-zinc-900 p-4 space-y-3">
-                                <div className="flex flex-col space-y-1">
+                                <div className="flex items-center justify-between">
                                   <Label className="text-[11px] font-bold uppercase text-muted-foreground">Cartório</Label>
                                   <Select
-                                    value={watchNotaryPaymentType || "cliente_paga_fora"}
-                                    onValueChange={(val) => setValue("notary_payment_type", val as any)}
+                                    value={watchHasNotary ? "sim" : "nao"}
+                                    onValueChange={(val) => {
+                                      const enabled = val === "sim";
+                                      setValue("has_notary", enabled, { shouldDirty: true });
+                                      if (!enabled) {
+                                        setValue("notary_payment_type", "cliente_paga_fora");
+                                        setValue("notary_costs", 0);
+                                      }
+                                    }}
                                   >
-                                    <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                    <SelectTrigger className="w-[70px] h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
                                       <SelectValue placeholder="Selecione" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
-                                      <SelectItem value="cliente_paga_fora">Cliente paga por fora</SelectItem>
-                                      <SelectItem value="loja_assume">Loja assume</SelectItem>
-                                      <SelectItem value="descontar_avaliacao">Descontar da avaliação</SelectItem>
+                                      <SelectItem value="sim">Sim</SelectItem>
+                                      <SelectItem value="nao">Não</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
-                                {(watchNotaryPaymentType === "loja_assume" || watchNotaryPaymentType === "descontar_avaliacao") && (
+                                {watchHasNotary && (
+                                  <div className="space-y-2 animate-fadeIn">
+                                    <Label className="text-[9px] text-muted-foreground">Quem paga o cartório?</Label>
+                                    <Select
+                                      value={watchNotaryPaymentType || "cliente_paga_fora"}
+                                      onValueChange={(val) => setValue("notary_payment_type", val as any)}
+                                    >
+                                      <SelectTrigger className="h-6 text-[10px] bg-zinc-900/60 border-zinc-800">
+                                        <SelectValue placeholder="Selecione" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-zinc-950 text-foreground border-zinc-800 text-[10px]">
+                                        <SelectItem value="cliente_paga_fora">Cliente paga por fora</SelectItem>
+                                        <SelectItem value="loja_assume">Loja assume</SelectItem>
+                                        <SelectItem value="descontar_avaliacao">Descontar da avaliação</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+                                {watchHasNotary && (watchNotaryPaymentType === "loja_assume" || watchNotaryPaymentType === "descontar_avaliacao") && (
                                   <div className="space-y-1.5 animate-fadeIn">
                                     <Label htmlFor="notary_costs" className="text-[9px] text-muted-foreground">Valor Taxa (R$)</Label>
                                     <Input
@@ -3574,11 +3596,11 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                             </div>
                           </div>
 
-                          {/* Seção 3: Corretor e Procuração */}
+                          {/* Seção 3: Corretagem */}
                           <div className="space-y-3">
                             <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
                               <span className="w-1 h-3 bg-emerald-400 rounded-sm"></span>
-                              3. Custos Operacionais (Corretagem & Procuração)
+                              3. Custos Operacionais (Corretagem)
                             </div>
                             <Card className="bg-black/35 border-zinc-900 p-4 space-y-4">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -3624,24 +3646,6 @@ export function VehiclesClient({ initialVehicles, userRole }: VehiclesClientProp
                                   )}
                                 </div>
 
-                                {/* Procuração */}
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
-                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Procuração do Cartório</Label>
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    <Label htmlFor="power_value" className="text-[9px] text-muted-foreground font-semibold">Valor Procuração (R$)</Label>
-                                    <Input
-                                      id="power_value"
-                                      type="text"
-                                      placeholder="0,00"
-                                      {...register("power_value")}
-                                      onChange={handleBRLChange("power_value")}
-                                      className="bg-black/40 h-7 text-xs text-primary border-zinc-800"
-                                    />
-                                    <p className="text-[9px] text-muted-foreground">Valor cobrado pela procuração que será descontado do cliente.</p>
-                                  </div>
-                                </div>
                               </div>
                             </Card>
                           </div>

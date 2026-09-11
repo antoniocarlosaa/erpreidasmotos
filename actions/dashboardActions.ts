@@ -4,80 +4,56 @@ import { db } from "@/lib/firebase/admin";
 import { getCurrentUser } from "./authActions";
 import { Client, Vehicle, Contract } from "@/types";
 
-export async function getDashboardData() {
-  const user = await getCurrentUser();
+export async function getDashboardData(currentUser?: Awaited<ReturnType<typeof getCurrentUser>>) {
+  const user = currentUser || await getCurrentUser();
   if (!user || !user.company_id) {
     throw new Error("Não autorizado.");
   }
 
-  // 1. CARREGAR CONTRATOS DA EMPRESA E SEUS RELACIONAMENTOS (VEÍCULO E CLIENTE)
-  const contractsSnap = await db.collection("contracts")
-    .where("company_id", "==", user.company_id)
-    .get();
+  // Carregar as coleções independentes em paralelo para reduzir o tempo do painel.
+  const [contractsSnap, vehiclesSnap, clientsSnap, entriesSnap, paymentsSnap] = await Promise.all([
+    db.collection("contracts").where("company_id", "==", user.company_id).get(),
+    db.collection("vehicles").where("company_id", "==", user.company_id).get(),
+    db.collection("clients").where("company_id", "==", user.company_id).get(),
+    db.collection("financial_entries").where("company_id", "==", user.company_id).get(),
+    db.collection("payments").where("status", "==", "PENDENTE").get(),
+  ]);
+
+  const vehicles = vehiclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Vehicle[];
+  const clients = clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Client[];
+  const vehicleById = new Map(vehicles.map(vehicle => [vehicle.id, vehicle]));
+  const clientById = new Map(clients.map(client => [client.id, client]));
 
   const contracts = await Promise.all(
-    contractsSnap.docs.map(async (doc) => {
+    contractsSnap.docs.map((doc) => {
       const cData = doc.data() as Contract;
-      const { id: _, ...restData } = cData;
-      let vehicle = undefined;
-      let client = undefined;
-
-      if (cData.vehicle_id) {
-        const vDoc = await db.collection("vehicles").doc(cData.vehicle_id).get();
-        if (vDoc.exists) {
-          vehicle = { id: vDoc.id, ...vDoc.data() } as Vehicle;
-        }
-      }
-      if (cData.client_id) {
-        const clDoc = await db.collection("clients").doc(cData.client_id).get();
-        if (clDoc.exists) {
-          client = { id: clDoc.id, ...clDoc.data() } as Client;
-        }
-      }
+      const restData = Object.fromEntries(
+        Object.entries(cData).filter(([key]) => key !== "id")
+      ) as Omit<Contract, "id">;
 
       return {
         id: doc.id,
         ...restData,
-        vehicle,
-        client,
+        vehicle: cData.vehicle_id ? vehicleById.get(cData.vehicle_id) : undefined,
+        client: cData.client_id ? clientById.get(cData.client_id) : undefined,
       };
     })
   );
 
-  // 2. CARREGAR VEÍCULOS NO PÁTIO
-  const vehiclesSnap = await db.collection("vehicles")
-    .where("company_id", "==", user.company_id)
-    .get();
-  const vehicles = vehiclesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  // 3. CARREGAR LANÇAMENTOS FINANCEIROS
-  const entriesSnap = await db.collection("financial_entries")
-    .where("company_id", "==", user.company_id)
-    .get();
+  // Lançamentos financeiros da empresa.
   const financialEntries = entriesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  // 4. CARREGAR PARCELAS A VENCER (PROJEÇÃO)
-  const paymentsSnap = await db.collection("payments")
-    .where("status", "==", "PENDENTE")
-    .get();
-
-  const payments = await Promise.all(
-    paymentsSnap.docs.map(async (doc) => {
+  // Parcelas a vencer: os contratos já carregados evitam uma leitura por parcela.
+  const contractById = new Map(contracts.map(contract => [contract.id, contract]));
+  const payments = paymentsSnap.docs.map((doc) => {
       const pData = doc.data();
-      let contract = undefined;
-      if (pData.contract_id) {
-        const cDoc = await db.collection("contracts").doc(pData.contract_id).get();
-        if (cDoc.exists) {
-          contract = { company_id: cDoc.data()?.company_id };
-        }
-      }
+      const contract = pData.contract_id ? contractById.get(pData.contract_id) : undefined;
       return {
         id: doc.id,
         ...pData,
-        contract,
+        contract: contract ? { company_id: contract.company_id } : undefined,
       };
-    })
-  );
+    });
 
   const companyPayments = payments.filter(
     (p: any) => p.contract?.company_id === user.company_id

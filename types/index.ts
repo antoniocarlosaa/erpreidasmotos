@@ -65,6 +65,7 @@ export interface Vehicle {
   created_at: string;
   updated_at: string;
   // Informações de Venda
+  has_notary?: boolean;
   sale_date?: string;
   sold_by_name?: string;
   payment_method?: string;

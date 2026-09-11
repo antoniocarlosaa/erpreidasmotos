@@ -2,14 +2,12 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { login, register } from "@/actions/authActions";
+import { login } from "@/actions/authActions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Car, Lock, Mail, User, AlertCircle, CheckCircle, ShieldCheck } from "lucide-react";
+import { Car, Lock, Mail, AlertCircle, CheckCircle } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,38 +16,6 @@ export default function LoginPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("senha_teste_123");
-
-  const [registerName, setRegisterName] = useState("");
-  const [registerEmail, setRegisterEmail] = useState("");
-  const [registerPassword, setRegisterPassword] = useState("");
-  const [registerRole, setRegisterRole] = useState("vendedor");
-
-  const mockUsers = [
-    {
-      role: "admin",
-      label: "Administrador",
-      email: "admin@reidasmotos.com.br",
-      desc: "Acesso total aos relatórios, logs e configurações.",
-    },
-    {
-      role: "vendedor",
-      label: "Vendedor",
-      email: "vendedor@reidasmotos.com.br",
-      desc: "Gestão de veículos, clientes e contratos.",
-    },
-    {
-      role: "operacional",
-      label: "Operações",
-      email: "operacional@reidasmotos.com.br",
-      desc: "Acompanhamento de despachante e vistorias.",
-    },
-    {
-      role: "financeiro",
-      label: "Financeiro",
-      email: "financeiro@reidasmotos.com.br",
-      desc: "Reconciliação e fluxo de parcelas.",
-    },
-  ];
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,50 +30,12 @@ export default function LoginPage() {
       } else {
         setSuccess("Login realizado com sucesso! Redirecionando...");
         router.push("/dashboard");
-        router.refresh();
       }
     } catch (err: any) {
       setError(err.message || "Erro inesperado ao entrar.");
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const res = await register({
-        name: registerName,
-        email: registerEmail,
-        password: registerPassword,
-        role: registerRole,
-      });
-
-      if (res.error) {
-        setError(res.error);
-      } else {
-        setSuccess("Conta criada com sucesso! Você já pode entrar.");
-        setLoginEmail(registerEmail);
-        setLoginPassword(registerPassword);
-        // Limpar campos
-        setRegisterName("");
-        setRegisterEmail("");
-        setRegisterPassword("");
-      }
-    } catch (err: any) {
-      setError(err.message || "Erro inesperado ao registrar.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fillCredentials = (email: string) => {
-    setLoginEmail(email);
-    setLoginPassword("senha_teste_123");
   };
 
   return (
@@ -129,20 +57,12 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* Tabs container */}
+      {/* Login container */}
       <div className="w-full max-w-md z-10">
-        <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4 bg-zinc-900 border border-border/40 p-1 rounded-lg">
-            <TabsTrigger value="login" className="rounded-md font-semibold text-sm">Entrar</TabsTrigger>
-            <TabsTrigger value="register" className="rounded-md font-semibold text-sm">Criar Conta</TabsTrigger>
-          </TabsList>
-
-          {/* LOGIN CONTENT */}
-          <TabsContent value="login">
             <Card className="glass-card shadow-2xl border-white/5">
               <CardHeader>
                 <CardTitle className="text-xl font-bold">Acessar o Sistema</CardTitle>
-                <CardDescription>Insira suas credenciais ou escolha um perfil de teste abaixo.</CardDescription>
+                <CardDescription>Insira suas credenciais para acessar o painel.</CardDescription>
               </CardHeader>
               <form onSubmit={handleLogin}>
                 <CardContent className="space-y-4">
@@ -201,125 +121,6 @@ export default function LoginPage() {
               </form>
             </Card>
 
-            {/* Test Accounts Quick Select */}
-            <div className="mt-6 space-y-3">
-              <p className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Perfis de Teste Rápidos (Seed)
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {mockUsers.map((mu) => (
-                  <button
-                    key={mu.role}
-                    type="button"
-                    onClick={() => fillCredentials(mu.email)}
-                    className="flex flex-col text-left p-3 rounded-lg border border-border/40 bg-zinc-900/60 hover:bg-secondary/40 hover:border-primary/40 transition-all cursor-pointer group"
-                  >
-                    <span className="text-xs font-bold text-foreground group-hover:text-primary transition-colors flex items-center gap-1.5">
-                      <ShieldCheck size={12} className="text-primary" />
-                      {mu.label}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground truncate">{mu.email}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* REGISTER CONTENT */}
-          <TabsContent value="register">
-            <Card className="glass-card shadow-2xl border-white/5">
-              <CardHeader>
-                <CardTitle className="text-xl font-bold">Registrar Conta</CardTitle>
-                <CardDescription>Cadastre-se para criar seu perfil corporativo no sistema.</CardDescription>
-              </CardHeader>
-              <form onSubmit={handleRegister}>
-                <CardContent className="space-y-4">
-                  {error && (
-                    <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-xs text-destructive border border-destructive/20">
-                      <AlertCircle size={16} className="shrink-0" />
-                      <span>{error}</span>
-                    </div>
-                  )}
-                  {success && (
-                    <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 p-3 text-xs text-emerald-400 border border-emerald-500/20">
-                      <CheckCircle size={16} className="shrink-0" />
-                      <span>{success}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-name">Nome Completo</Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="reg-name"
-                        type="text"
-                        placeholder="João da Silva"
-                        value={registerName}
-                        onChange={(e) => setRegisterName(e.target.value)}
-                        className="pl-9 bg-black/40"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-email">E-mail corporativo</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="reg-email"
-                        type="email"
-                        placeholder="nome@reidasmotos.com.br"
-                        value={registerEmail}
-                        onChange={(e) => setRegisterEmail(e.target.value)}
-                        className="pl-9 bg-black/40"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-password">Senha de acesso (mínimo 6 chars)</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="reg-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={registerPassword}
-                        onChange={(e) => setRegisterPassword(e.target.value)}
-                        className="pl-9 bg-black/40"
-                        minLength={6}
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reg-role">Cargo / Perfil Operacional</Label>
-                    <Select value={registerRole} onValueChange={setRegisterRole}>
-                      <SelectTrigger className="bg-black/40">
-                        <SelectValue placeholder="Selecione um perfil" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Administrador</SelectItem>
-                        <SelectItem value="vendedor">Vendedor</SelectItem>
-                        <SelectItem value="operacional">Operador / Pós-Venda</SelectItem>
-                        <SelectItem value="financeiro">Financeiro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" className="w-full font-semibold" disabled={loading}>
-                    {loading ? "Cadastrando..." : "Criar Conta Corporativa"}
-                  </Button>
-                </CardFooter>
-              </form>
-            </Card>
-          </TabsContent>
-        </Tabs>
       </div>
 
       {/* Footer */}

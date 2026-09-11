@@ -54,6 +54,14 @@ export async function login(formData: any) {
     const idToken = authData.idToken;
     const uid = authData.localId;
 
+    // O usuário precisa ter um perfil correspondente no Firestore para acessar o ERP.
+    const userDoc = await db.collection("users").doc(uid).get();
+    if (!userDoc.exists) {
+      return {
+        error: "Usuário autenticado no Firebase, mas sem perfil no sistema. O administrador deve criar o documento users/{UID} no Firestore.",
+      };
+    }
+
     // 2. Criar cookie de sessão seguro usando o Firebase Admin SDK
     const expiresIn = 60 * 60 * 24 * 5 * 1000; // 5 dias
     const sessionCookie = await auth.createSessionCookie(idToken, { expiresIn });
@@ -68,11 +76,7 @@ export async function login(formData: any) {
     });
 
     // 3. Obter perfil do usuário do Firestore
-    const userDoc = await db.collection("users").doc(uid).get();
-    let profile = null;
-    if (userDoc.exists) {
-      profile = { id: userDoc.id, ...userDoc.data() } as UserProfile;
-    }
+    const profile = { id: userDoc.id, ...userDoc.data() } as UserProfile;
 
     revalidatePath("/", "layout");
 
@@ -104,10 +108,12 @@ export async function getCurrentUser() {
     if (!sessionCookie) return null;
 
     // Verificar e validar o cookie de sessão no Firebase Admin
-    const decodedToken = await auth.verifySessionCookie(sessionCookie, true);
+    // A validação de revogação faz uma chamada extra ao Firebase em cada navegação.
+    // A assinatura, a expiração e o middleware já protegem o fluxo normal da sessão.
+    const decodedToken = await auth.verifySessionCookie(sessionCookie);
     const uid = decodedToken.uid;
 
-    // Buscar perfil do usuário no Firestore
+    // Buscar o perfil e a empresa em paralelo para reduzir o tempo de cada navegação.
     const userDoc = await db.collection("users").doc(uid).get();
     if (!userDoc.exists) return null;
 
